@@ -1,0 +1,17 @@
+[project]
+name="wFunction"
+description = "Generate a qiskit circuit to prepare qubits in specified distribution"
+authors = [
+    "Alexandre Foley <Alexandre.Foley@usherbrooke.ca>"
+]
+license = "All rights reserved"
+python = "3.6"
+version="0.1.0"
+
+dependencies = [
+"quantit >=0.2.1",
+"jax >=0.3.7",
+"numpy >=1.21.6",
+"quimb >=1.3.0",
+"torch >=1.11.0",]
+
