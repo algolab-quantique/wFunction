@@ -79,7 +79,7 @@ def sum_sweep(MPSes:list[qtt.networks.MPS],target:qtt.networks.MPS,env:list[qtt.
     out = torch.tensordot(target[oc],target[oc].conj(),dims=([0,1,2],[0,1,2])).item()
     return out
 
-def MPS_compressing_sum(MPSes:list[qtt.networks.MPS],tol:float,crit:float):
+def MPS_compressing_sum(MPSes:list[qtt.networks.MPS],target_norm2,tol:float,crit:float):
     """ perform the sum of MPS and compress the result using a tol truncating SVD, stop when the fidelity is stationnary to the crit"""
     length_MPS = len(MPSes[0])
     out = qtt.networks.random_MPS(length_MPS,2,2)
@@ -93,8 +93,9 @@ def MPS_compressing_sum(MPSes:list[qtt.networks.MPS],tol:float,crit:float):
     direction = 1
     iter_count = 0
     while True:
-        new_cost = sum_sweep(MPSes,out,envs,direction,tol)
-        if (abs(cost-new_cost)/abs(new_cost) < crit):
+        sum_sweep_out = sum_sweep(MPSes,out,envs,direction,tol)
+        new_cost = target_norm2 - sum_sweep_out
+        if new_cost < crit:
             break
         cost = new_cost
         iter_count += 1

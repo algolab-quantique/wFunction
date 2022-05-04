@@ -59,37 +59,48 @@ def polynomial2MPS(poly:Poly, nqbits:int,polydomain:tuple[int,int], fulldomain:t
     torch.set_default_dtype(dtype)
     pd0 = polydomain[0]
     pd1 = polydomain[1]
-    Ntensor_support = int(np.ceil(np.log2(pd0^pd1)))
+    Ntensor_support = int(np.ceil(np.log2((pd0^pd1)+1)))
     out = qtt.networks.MPS(nqbits)
     trivial_bits = polydomain[0]>>(Ntensor_support)
     for i in range(-Ntensor_support-1,-len(out)-1,-1):
         out[i] = torch.zeros([1,2,1])
         bit = trivial_bits & 1
-        trivial_bits>>1
+        trivial_bits = trivial_bits>>1
         out[i][0,bit,0] = 1
-    out[-Ntensor_support] = torch.Tensor(1,2,poly.degree()+1)
-    for i in range(poly.degree()+1):
-        T = out[-Ntensor_support]
-        x = 0
-        T[0,0,i] = Phi_s(poly,i,x)
-        x = bits2range((1<<(Ntensor_support-1)),fulldomain,nqbits)-fulldomain[0]
-        T[0,1,i] = Phi_s(poly,i,x)
-    for n in range(1,Ntensor_support-1):
-        out[-n-1] = G(poly,pd0,fulldomain,n,nqbits)
-    out[-1] = torch.zeros(poly.degree()+1,2,1)
-    out[-1][:,1,0] = torch.tensor([bits2range(pd0+1,fulldomain,nqbits)**p for p in range(poly.degree()+1)])
-    out[-1][:,0,0] = torch.tensor([bits2range(pd0,fulldomain,nqbits)**p for p in range(poly.degree()+1)])
+    if Ntensor_support > 1:
+        out[-Ntensor_support] = torch.Tensor(1,2,poly.degree()+1)
+        for i in range(poly.degree()+1):
+            T = out[-Ntensor_support]
+            x = 0
+            T[0,0,i] = Phi_s(poly,i,x)
+            x = bits2range( (1<<(Ntensor_support-1)),fulldomain,nqbits)-fulldomain[0]
+            T[0,1,i] = Phi_s(poly,i,x)
+        for n in range(1,Ntensor_support-1):
+            out[-n-1] = G(poly,pd0,fulldomain,n,nqbits)
+        out[-1] = torch.zeros(poly.degree()+1,2,1)
+        out[-1][:,1,0] = torch.tensor([bits2range(pd0+1,fulldomain,nqbits)**p for p in range(poly.degree()+1)])
+        out[-1][:,0,0] = torch.tensor([bits2range(pd0,fulldomain,nqbits)**p for p in range(poly.degree()+1)])
+    else:
+        out[-1] = torch.Tensor(1,2,1)
+        out[-1][0,0,0] = poly(bits2range(pd0,fulldomain,nqbits))
+        out[-1][0,1,0] = poly(bits2range(pd1,fulldomain,nqbits))
     return out
     
     
 if __name__=="__main__":
+    import matplotlib.pyplot as plt
+    import seaborn as sb
+    sb.set_theme()
     def y(x):
         return np.exp(-x**2)
-    poly1 = interpolate(y,4,[-1,0])
-    poly2 = interpolate(y,4,[0,1])
-    mps1 = polynomial2MPS(poly1,4,[0b000,0b111],[-1,1])
-    mps2 = polynomial2MPS(poly2,4,[0b1000,0b1111],[-1,1])
-    bitsdomain = bits2range(np.array(range(16)),[-1,1],4)
+    domain = (-1,1)
+    subdomain = [(domain[0],0),(0,domain[1])]
+    nbits = 4
+    poly1 = interpolate(y,10,subdomain[0])
+    poly2 = interpolate(y,10,subdomain[1])
+    mps1 = polynomial2MPS(poly1,nbits,[0b000,0b111],domain)
+    mps2 = polynomial2MPS(poly2,nbits,[0b1000,0b1111],domain)
+    bitsdomain = bits2range(np.array(range(16)),domain,nbits)
     test_samples = y(bitsdomain)
     mps1_samples = np.array([ torch.matmul(mps1[0][:,(i>>3)&1,:],torch.matmul(torch.matmul(mps1[1][:,(i>>2)&1,:],mps1[2][:,(i>>1)&1,:]),mps1[3][:,i&1,:])).item() for i in range(0,16)])
     mps2_samples = np.array([ torch.matmul(mps2[0][:,(i>>3)&1,:],torch.matmul(torch.matmul(mps2[1][:,(i>>2)&1,:],mps2[2][:,(i>>1)&1,:]),mps2[3][:,i&1,:])).item() for i in range(0,16)])
@@ -97,7 +108,9 @@ if __name__=="__main__":
     print(test_samples)
     print(mps1_samples)
     print(mps2_samples)
-    cMPS = compress_algs.MPS_compressing_sum([mps1,mps2],1e-6,1e-6)
+    w = np.linspace(-1,1,2**4)
+    Norm = np.sum((mps1_samples+mps2_samples)**2)
+    cMPS = compress_algs.MPS_compressing_sum([mps1,mps2],Norm,1e-6,1e-6)
     for t in cMPS:
         print(t.size())
     oc = cMPS.orthogonality_center
@@ -109,5 +122,8 @@ if __name__=="__main__":
     cMPS_samples = np.array([ torch.matmul(cMPS[0][:,(i>>3)&1,:],torch.matmul(torch.matmul(cMPS[1][:,(i>>2)&1,:],cMPS[2][:,(i>>1)&1,:]),cMPS[3][:,i&1,:])).item() for i in range(0,16)])
     print(cMPS_samples)
     print("actual norm polyMPS",np.sum(cMPS_samples**2)*2/(2**4-1))
+    plt.plot(w,mps1_samples)
+    plt.plot(w,mps2_samples)
+    plt.show()
 
 

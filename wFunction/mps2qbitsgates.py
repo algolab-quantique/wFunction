@@ -1,6 +1,6 @@
 
 from jax.config import config
-from torch import zero_
+from pyparsing import PrecededBy
 config.update("jax_enable_x64", True)
 
 import quimb as qb
@@ -47,8 +47,8 @@ def idx_list(site:int,gate_num:int):
     l = [idx.format(i,site) for i in range(0,gate_num)] + [idx.format('f',site)]
     return l
 
-def generate_operators(link:int,bond_size:int,left_idx,right_idx):
-    n_op = link_pyramid_gate_num(bond_size,link)
+def generate_pyramid_operators(link:int,n_op:int,left_idx,right_idx):
+    # n_op = link_pyramid_gate_num(bond_size,link)
     out = qtn.TensorNetwork([])
     mod = (link%2)
     if n_op == 1 and len(right_idx)==2: # attempt to detect odd number of site boundary condition with just local information
@@ -59,40 +59,89 @@ def generate_operators(link:int,bond_size:int,left_idx,right_idx):
         out &= qtn.Tensor(data =jnp.eye(4,4).reshape(2,2,2,2), inds = [left_idx[2*i+mod],right_idx2[2*i], left_idx[2*i+mod+1],right_idx2[2*i+1]],tags=['O','O{}{}'.format(link,n_op-i-1)])
     return out
 
-
-def TwoqbitsPyramid(mps:qtn.TensorNetwork1D):
-    #this implementation doesn't work, for a few reason: 
-    # - we should be taking the log4 of the bond dim instead of log2 to determine the number of 2qbits gate necessary for a given link.
-    # - The network must be built by the base of the pyramid then the tip, and left hollow if no more gates are necessary. The tip must contract with the MPS first.
-    # - we must take care to label the index correctly when an odd number of qbits are used.
-    # - if a zero gate situation happen, it mean we should put a 1qbit gate on the site the closest to an edge.
-    L = len(mps.tensor_map)-2 #number of qbits
-    assert(mps.ind_size('b1') <= 2)
-    back_bond = mps.ind_size('b{}'.format(0))
-    prev_ngate = link_pyramid_gate_num(back_bond)
-    forward_bond = mps.ind_size('b{}'.format(1))
-    left_idx = idx_list(0,back_bond,forward_bond)
-    out = qtn.TensorNetwork([])
-    for link in range(0,L - 1 ):
-        ngate = link_pyramid_gate_num(forward_bond,link)
-        assert(jnp.abs(prev_ngate - ngate)<=1)#assert we're dealing with a properly compressed state
-        back_bond = forward_bond
-        forward_bond = mps.ind_size('b{}'.format(link+2))
-        right_idx = idx_list(link+1,back_bond,forward_bond)
-        out &= generate_operators(link,back_bond,left_idx,right_idx)
-        back_bond = forward_bond
-        left_idx = right_idx
-        prev_ngate = ngate
+def los_idx(n_op:int,site:int,nsite:int):
+    idx = 'l{}q{}'
+    nlink = nsite - 1
+    midlink = nlink/2
+    # maxi = int(nlink//2) + 1 - int(np.floor(abs( midlink - site ) ))
+    out = [idx.format(i,site) for i in range(n_op,-1,-1)]
+    out[0] = idx.format('f',site)
     return out
 
-def twobitsLosange(mps:qtn.TensorNetwork1D):
+
+def generate_losange_operators(link:int,midlink:int,n_op:int,left_idx,right_idx):
+    # We make the losange downward pyramid first, and the pyramid shell first.
+    if (len(left_idx) - len(right_idx))>=2:
+        right_idx = [right_idx[0] , *[  x  for r in right_idx[1:-1] for x in [r,r] ] ,right_idx[-1]]
+    elif -(len(left_idx) - len(right_idx)) >=2:
+        left_idx = [left_idx[0] , *[  x  for r in left_idx[1:-1] for x in [r,r] ] ,left_idx[-1]]
+    out = qtn.TensorNetwork([])
+    if link > midlink and len(left_idx) >2:
+        left_idx2 = left_idx[1:]
+    else:
+        left_idx2 = left_idx
+    if link < midlink and len(right_idx) > 2:
+        right_idx2 = right_idx[1:]
+    else:
+        right_idx2 = right_idx
+    for i in range(n_op):
+        out &= qtn.Tensor(data =jnp.eye(4,4).reshape(2,2,2,2), inds = [left_idx2[2*i+1],right_idx2[2*i+1], left_idx2[2*i],right_idx2[2*i]],tags=['O','O{}{}'.format(link,n_op-i-1)])
+    return out
+
+def generate_staircase_operators(input_idx, output_idx,Nlink, min_layer_number):
+    out = qtn.TensorNetwork([])
+    i = 0
+    if Nlink > 1:
+        out &= qtn.Tensor(data =jnp.eye(4,4).reshape(2,2,2,2), inds = [input_idx.format(i),input_idx.format(i+1),output_idx.format(i),str(i+1)],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
+        for i in range(1,Nlink-1):
+            out &= qtn.Tensor(data =jnp.eye(4,4).reshape(2,2,2,2), inds = [str(i),input_idx.format(i+1),output_idx.format(i),str(i+1)],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
+        i = Nlink-1
+        out &= qtn.Tensor(data =jnp.eye(4,4).reshape(2,2,2,2), inds = [str(i),input_idx.format(i+1),output_idx.format(i),output_idx.format(i+1)],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
+    else:
+        out &= qtn.Tensor(data =jnp.eye(4,4).reshape(2,2,2,2), inds = [input_idx.format(i),input_idx.format(i+1),output_idx.format(i),output_idx.format(i+1)],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
+    return out
+
+
+def TwoqbitsStaircaseLayers(mps:qtn.TensorNetwork1D,Nlayer:int):
+    L = len(mps.tensor_map)-2 #number of qbits
+    out = qtn.TensorNetwork([])
+
+    for layer in range(0,Nlayer-1 ):
+        out &= generate_staircase_operators("l{}q{}".format(layer,"{}"),"l{}q{}".format(layer+1,"{}"),L-1,layer)
+    out &= generate_staircase_operators("l{}q{}".format(Nlayer-1,"{}"),"l{}q{}".format("f","{}"),L-1,Nlayer-1)
+    return out
+
+def TwoqbitsPyramidLayers(mps:qtn.TensorNetwork1D,Nlayer:int):
+    L = len(mps.tensor_map)-2 #number of qbits
+    assert(mps.ind_size('b1') <= 2)
+    left_idx = los_idx(Nlayer,0,L)
+    out = qtn.TensorNetwork([])
+    for link in range(0,L - 1 ):
+        ngate = Nlayer + Nlayer*(link!=L-2)
+        right_idx = los_idx(ngate,link+1,L)
+        out &= generate_losange_operators(link,(L-1)//2,Nlayer,left_idx,right_idx)
+        left_idx = right_idx
+    return out
+
+def TwoqbitsLosange(mps:qtn.TensorNetwork1D):
     L = len(mps.tensor_map)-2 #number of qbits
     assert(mps.ind_size('b1') <= 2)
     back_bond = mps.ind_size('b{}'.format(0))
-    prev_ngate = jnp.log2(back_bond,-1)
+    prev_ngate = int(np.ceil(np.log2(back_bond)))
     forward_bond = mps.ind_size('b{}'.format(1))
-    left_idx = idx_list(0,back_bond,forward_bond)
+    ngate = int(np.ceil(np.log2(forward_bond)))
+    left_idx = los_idx(prev_ngate+ngate,0,L)
     out = qtn.TensorNetwork([])
+    for link in range(0,L - 1 ):
+        back_bond = forward_bond
+        forward_bond = mps.ind_size('b{}'.format(link+2))
+        prev_ngate = ngate
+        ngate = int(np.ceil(np.log2(forward_bond)))
+        assert(jnp.abs(prev_ngate - ngate)<=1)#assert we're dealing with a properly compressed state
+        right_idx = los_idx(prev_ngate+ngate,link+1,L)
+        out &= generate_losange_operators(link,(L-1)//2,prev_ngate,left_idx,right_idx)
+        left_idx = right_idx
+    return out
 
 def generate_Lagrange_multipliers(Onet:qtn.TensorNetwork):
     out = qtn.TensorNetwork([])
@@ -107,7 +156,6 @@ def generate_Lagrange_multipliers(Onet:qtn.TensorNetwork):
 
 def Infidelity(Onet,mps,triv_state):
     """
-    negative log of the fidelity. zero when the objects match, infinite when fidelity is zero.
     """
     S = triv_state|Onet
     fidelity = (S|mps).contract()#optimize=opt)
@@ -168,18 +216,18 @@ def magic_loss(tn, psi,trivial_state, id, C,m):
     """combine the fidelity loss, lagrange multiplier, and gauge reularizer. the set of 2 qbits gate and lagrange multiplier must be supplied as a single network with tags 'O' and 'L' to distinguish between the two"""
     Onet = qtn.TensorNetwork(tn['O'])
     Lag_mult = qtn.TensorNetwork(tn['L'])
-    return Infidelity(Onet,psi,trivial_state) + unitarity_cost(Onet,Lag_mult,id) #+ gauge_regularizer(Onet,id,C,m)
+    return (Infidelity(Onet,psi,trivial_state) + unitarity_cost(Onet,Lag_mult,id))*( 1 + gauge_regularizer(Onet,id,C,m))
 
 def positive_magic_loss(tn, psi,trivial_state, id, C,m):
     """combine the fidelity loss, lagrange multiplier, and gauge reularizer. the set of 2 qbits gate and lagrange multiplier must be supplied as a single network with tags 'O' and 'L' to distinguish between the two"""
     Onet = qtn.TensorNetwork(tn['O'])
     Lag_mult = qtn.TensorNetwork(tn['L'])
-    uc = unitarity_cost(Onet,Lag_mult,id)
-    return Infidelity(Onet,psi,trivial_state) + jnp.abs(uc) #+ gauge_regularizer(Onet,id,C,m)
+    uc = unitarity_cost(Onet,Lag_mult,id) 
+    return (Infidelity(Onet,psi,trivial_state) + jnp.abs(uc) )*(1 + gauge_regularizer(Onet,id,C,m))
 
 def magic_loss2(tn,psi,trivial_state,L,id,C,m):
     """No lagrange multiplier for this one, unitarity constraint must be imposed by some other means."""
-    return Infidelity(tn,psi,trivial_state) + unitarity_cost2(tn,L,id)# + gauge_regularizer(tn,id,C,m)
+    return (Infidelity(tn,psi,trivial_state) + unitarity_cost2(tn,L,id))*(1 + gauge_regularizer(tn,id,C,m))
 
 def trivial_state(nqbit:int,label='l0q',bin=0):
     return qtn.TensorNetwork([qtn.Tensor(data = jnp.array([1*((1<<(nqbit-1-i))&bin == 0),1*((1<<(nqbit-1-i))&bin != 0)]), inds=[label+'{}'.format(i)]) for i in range(nqbit)])
@@ -200,11 +248,14 @@ def normalize_gates(gate_set:qtn.TensorNetwork):
         out &= normalize_gate(gate)
     return out
 
-def MPS2Gates(mps,precision,max_count=1000):
+def MPS2Gates(mps,precision,Nlayer,max_count=40):
     qX = qttMPS2quimbTN(mps,'lfq')
-    O = TwoqbitsPyramid(qX)
+    O = TwoqbitsStaircaseLayers(qX,Nlayer)
     L = generate_Lagrange_multipliers(O)
     ts = trivial_state(len(mps))
+    # print("O",O)
+    # print("X",qX)
+    # print("ts",ts)
     id = qtn.Tensor(data = jnp.eye(4,4).reshape(2,2,2,2), inds=('a','b','c','d'))
     optmzr = TNOptimizer(
         O,
@@ -231,7 +282,7 @@ def MPS2Gates(mps,precision,max_count=1000):
         # else:
         OL_opt = optmzr.optimize(20000,tol=precision)   
         # OL_opt = normalize_gates(TN(OL_opt['O']))#&normalize_gates(TN(OL_opt['L']))
-        error = Infidelity(TN(OL_opt['O']),qX,ts)
+        error = Infidelity(OL_opt,qX,ts)
         # print("count: ", count)
         print("current error: ", error, " unitarity error: ", unitarity_cost2(OL_opt,L,id))
         count += 1 
@@ -239,30 +290,39 @@ def MPS2Gates(mps,precision,max_count=1000):
     return O,error
 
 def optimize_unitaries(Onet:qtn.TensorNetwork,tags_re,stateA:qtn.TensorNetwork,stateB:qtn.TensorNetwork,precision,max_iteration=1000):
+    """Gradient free, very slow convergence..."""
     def filt(x):
         return re.search(tags_re,x)
-    Opt_tags = filter(filt,Onet.tags)
+    Opt_tags = [*filter(filt,Onet.tags)]
     stateA.add_tag("STATEA")
     stateB.add_tag("STATEB")
     Scalar_Net = Onet|stateA|stateB
+    # Scalar_Net.draw()
     print("starting fidelity: ", Scalar_Net.contract()) 
     fid = 10000
-    new_fid=0
+    new_fid=10000
     count = 0
     print("====OPTIMIZE UNITARIES====")
-    while abs(new_fid-fid)> precision and count < max_iteration: 
+    while (abs(1-fid) > precision) and (count < max_iteration): 
         fid = new_fid
         for tag in Opt_tags:
+            Scalar_Net = Onet|stateA|stateB
             Otag = Scalar_Net[tag].tags
             tags = Scalar_Net.tags.difference(qtn.oset(Otag))
-            print("tags: ", tags)
-            print("tag: ", tag)
+            # print("tags: ", tags)
+            # print("tag: ", tag)
             V = Scalar_Net.contract(tags)#,optimize=opt)
-            print("V:", V)
+            # print("V:", V)
             R = V[tags]
-            print(R.inds)
-            u,d,v = qtn.tensor_split(R,R.inds[:2],get='tensors',absorb=None)
-            V[tag] = v.H@u.H
+            # print(R.inds)
+            u,d,v = qtn.tensor_split(R,R.inds[:2],get='tensors',absorb=None,cutoff=0.0)
+            tmp = (v.H@u.H)
+            tmp.retag_({t:None for t in tmp.tags})
+            # print(Onet[tag].data)
+            for Ot in Otag:
+                tmp.tags.add(Ot)
+            Onet[tag] = tmp
+            # print(Onet[tag].data)
             new_fid = d.sum_reduce(d.inds[0]).data
             print("tag {} iteration {}, fidelity {}".format(tag,count,new_fid))
         count +=1
@@ -275,32 +335,68 @@ if __name__=='__main__':
     import matplotlib.pyplot as plt
     import seaborn as sb
     sb.set_theme()
-
+    # N = 6
+    # X = qtt.networks.random_MPS(N,4,2)
+    # qX = qttMPS2quimbTN(X,'lfq').compress_all_().compress_all_()
+    # O = TwoqbitsLosange(qX)
+    # print(O)
+    # O.draw()
     def f(x):
-        return np.exp(-x**2)
+        return np.exp(-(x)**2)
     nqbit = 10
-    domain = (-1,1)
-    Gate_precision = 1e-12
-    MPS_precision = 0.001
-    polys = gerc.poly_by_part(f,0.001,nqbit,domain)
-    mpses = [terp.polynomial2MPS(poly,nqbit,pdomain,domain) for poly,pdomain in polys]
-    X = calgs.MPS_compressing_sum(mpses,0.1*MPS_precision,MPS_precision)
-    print_sizes(X)
-    for t in X:
-        print(t.size())
-    X[X.orthogonality_center] /= np.sqrt(qtt.networks.contract(X,X))
-    O, inf = MPS2Gates(X,Gate_precision,max_count=0)
     zero_state = trivial_state(nqbit)
+    domain = (-3,3)
+    w = np.linspace(*domain,2**nqbit)
+    precision = 0.00001
+    Gate_precision = precision#1e-12
+    MPS_precision = precision #0.001
+    polys = gerc.poly_by_part(f,MPS_precision,nqbit,domain)
+    for poly,subdomain in polys:
+        subdo = (terp.bits2range(subdomain[0],domain,nqbit),terp.bits2range(subdomain[1],domain,nqbit))
+        ww = np.linspace(*subdo,300)
+        plt.plot(ww,poly(ww), label = "poly {} {}".format(subdo,subdomain))
+    plt.legend()
+    plt.show()
+    target_norm2 = 0
+    mpses = [
+        terp.polynomial2MPS(poly,nqbit,pdomain,domain)
+        for poly,pdomain in polys]
+    for mps in mpses:
+        s = []
+        for binstate in range(2**nqbit):
+            M = qttMPS2quimbTN(mps,'lfq')
+            ts = trivial_state(nqbit,'lfq',binstate)
+            s.append(M@ts)
+        plt.plot(w,s,label = "mps")
+    plt.legend()
+    plt.show()
+    for mps in mpses:
+        target_norm2 += qtt.networks.contract(mps,mps)
+    X = calgs.MPS_compressing_sum(mpses,target_norm2,0.1*MPS_precision,MPS_precision)
+    print_sizes(X)
+    Norm = np.sqrt(qtt.networks.contract(X,X))
+    print("NORM:",Norm)
+    X[X.orthogonality_center] /= Norm
     qX = qttMPS2quimbTN(X,'lfq')
-    O = optimize_unitaries(O,"O\d+",zero_state,qX,Gate_precision,max_iteration=100)
-    O.draw()
-    for t in qX:
-        print(t)
+    SM = []
+    for binstate in range(2**nqbit):
+        ts = trivial_state(nqbit,'lfq',binstate)
+        SM.append(qX@ts*Norm)
+    # plt.plot(w,SM)
+    # plt.show()
+    pass
+    O = TwoqbitsStaircaseLayers(qX,1)
+    # O.draw()
+    O, inf = MPS2Gates(X,Gate_precision,1,max_count=10)
+    # O.draw(show_tags=True, show_inds=True)
+    # O = optimize_unitaries(O,"O\d+",zero_state,qX,Gate_precision,max_iteration=100)
+    # for t in qX:
+    #     print(t)
     SO = []
     SM = []
-    for t in O:
-        print(t)
-    print(zero_state)
+    # for t in O:
+    #     print(t)
+    # print(zero_state)
     for binstate in range(2**nqbit):
         ts = trivial_state(nqbit,'lfq',binstate)
         Val = (zero_state&O)@ts
@@ -310,12 +406,17 @@ if __name__=='__main__':
     # print(SM)
     SO = np.array(SO)
     SM = np.array(SM)
-    print((zero_state&O)@(zero_state&O))
-    print(qX@qX)
-    F = (zero_state&O)@qX
-    print(F)
-    print(np.dot(SO,SM))
-    print((1-F)**2)
+    print( "expected state vector" ,SM)
+    print( "expected operators (no permute): ")
+    for t in O:
+        print(t.tags)
+        print(t.data.reshape(4,4))
+    # print("<0|O^d O |0>",(zero_state&O)@(zero_state&O))
+    # print(qX@qX)
+    # F = (zero_state&O)@qX
+    # print(F)
+    # print(np.dot(SO,SM))
+    # print((1-F)**2)
     plt.plot(SO)
     plt.plot(SM)
     plt.show()

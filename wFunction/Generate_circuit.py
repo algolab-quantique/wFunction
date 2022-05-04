@@ -11,14 +11,25 @@ import compress_algs as calgs
 from qiskit.converters import circuit_to_gate
 import quantit as qtt
 from jax.config import config
+import torch
 config.update("jax_enable_x64", True)
 
 TN = qtn.TensorNetwork
 
 def qtens2operator(tens:qtn.Tensor):
     """ To transpose or not to transpose, that is the question."""
-    ar = np.array(tens.data).reshape(4,4).transpose().conj()
+    # print(tens.tags)
+    # print(tens.data.reshape(4,4))
+    ar = np.array(tens.data).transpose([3,2,1,0]).reshape(4,4).conj()
     return Operator(ar)
+
+def extract_layer_link(tags,regexp):
+    for tag in tags:
+        match = re.search(regexp,tag)
+        if match:
+            layer = match.group(1)
+            link = match.group(2)
+    return int(layer),int(link)
 
 def extract_layer(inds,regexp):
     layer = int(re.search(regexp,inds[0]).group(1))
@@ -39,16 +50,16 @@ def extract_qbits(inds,regexp):
 def prep_list_dict(tn:TN):
     md = defaultdict(list)
     for t in tn:
-        layer = extract_layer(t.inds,"l(\d+)")
+        layer,link = extract_layer_link(t.tags,"O(\d+),(\d+)")
         tags = [tag for tag in t.tags]
-        T = t.data.reshape(4,4)
-        md[layer].append({"obj":qtens2operator(t), "qubits":extract_qbits(t.inds,"q(\d+)"),'label':tags[1]})
+        md[layer].append({"obj":qtens2operator(t), "qubits":((link),(link)+1),'label':tags[2]})
     return md
 
 def net2circuit(net:TN,nqbits,registers):
     circuit = qs.QuantumCircuit(registers)
     op_dict = prep_list_dict(net)
     largest_key = max(op_dict.keys())
+    # for layer in range(largest_key,-1,-1): #reverse order of application of the gates.
     for layer in range(largest_key+1):
         op_list = op_dict[layer]
         for op in op_list:
@@ -57,8 +68,8 @@ def net2circuit(net:TN,nqbits,registers):
 
 def poly_by_part(f,precision,nqbit,domain,qbmask=0,fulldomain=None):
     """Recursive separtion of the domain until the interpolation is able to reconstruct with a small enough error. Each polynomial in the return is paired with its bit domain"""
-    if fulldomain is None:
-        fulldomain = domain
+    # if fulldomain is None:
+    fulldomain = domain #Fulldomain was a mistake. only domain matter. refactor to remove it.
     if nqbit >1:
         poly = terp.interpolate(f,10,domain,fulldomain)
     else:
@@ -78,35 +89,51 @@ def poly_by_part(f,precision,nqbit,domain,qbmask=0,fulldomain=None):
         return [*poly_by_part(f,precision,nqbit,leftdomain,qbmask,fulldomain),*poly_by_part(f,precision,nqbit,rightdomain,leftbitmask,fulldomain)]
 
 
-def Generate_unitary_net(f,precision,nqbit,domain):
-    polys = poly_by_part(f,precision,nqbit,domain)
+def Generate_unitary_net(f,MPS_precision,Gate_precision,nqbit,domain,Nlayer):
+    polys = poly_by_part(f,MPS_precision,nqbit,domain)
     mpses = [terp.polynomial2MPS(poly,nqbit,pdomain,domain) for poly,pdomain in polys]
-    mps = calgs.MPS_compressing_sum(mpses,0.1*precision,precision)
-    mps[mps.orthogonality_center]/= np.sqrt(qtt.networks.contract(mps,mps))
-    unitary_set,Infidelity = mpqb.MPS2Gates(mps,precision)
+    Norm2 = np.sum([qtt.networks.contract(m,m) for m in mpses])
+    mps = calgs.MPS_compressing_sum(mpses,Norm2,0.1*MPS_precision,MPS_precision)
+    oc = mps.orthogonality_center
+    mps[oc]/= np.sqrt(torch.tensordot(mps[oc],mps[oc],dims=([0,1,2],[0,1,2])))#Set the norm to one, freshly computer to correct any norm error in the opimization
+    unitary_set,Infidelity = mpqb.MPS2Gates(mps,Gate_precision,Nlayer)
+    print(Infidelity)
     return unitary_set
 
-def Generate_circuit(f,precision,nqbit,domain,register,name="function_gate"):
-    unitary_set=Generate_unitary_net(f,precision,nqbit,domain)
+def Generate_circuit(f,MPS_precision,Gate_precision,nqbit,domain,register,Nlayer,name="function_gate"):
+    unitary_set=Generate_unitary_net(f,MPS_precision,Gate_precision,nqbit,domain,Nlayer)
     circuit = net2circuit(unitary_set,nqbit,register)
     # circuit.name = name
     return circuit
 
-def Generate_gate(f,precision,nqbit,domain,name="function_gate"):
+def Generate_gate(f,MPS_precision,Gate_precision,nqbit,domain,Nlayer,name="function_gate"):
     register = qs.QuantumRegister(nqbit)
-    return circuit_to_gate(Generate_circuit(f,precision,nqbit,domain,register,name))
+    return circuit_to_gate(Generate_circuit(f,MPS_precision,Gate_precision,nqbit,domain,register,Nlayer,name))
 
 
 if __name__=='__main__':
     # import mps2qbitsgates as mpqb 
     # import quantit as qtt
+    import matplotlib.pyplot as plt
+    import seaborn as sb
+    sb.set_theme()
     import jax.numpy as jnp
     def f(x):
         return np.exp(-x**2)
     nqbit = 10
-    domain = (-1,1)
-    precision = 0.001
-    # polys = poly_by_part(f,0.001,nqbit,domain)
+    Nlayer = 3
+    domain = (-3,3)
+    Gate_precision = 1e-12
+    MPS_precision = 0.001
+    register = qs.QuantumRegister(nqbit)
+    circuit = Generate_circuit(f,MPS_precision,Gate_precision,register.size,domain,register,Nlayer)
+    print(circuit)
+    # polys = poly_by_part(f,precision,nqbit,domain)
+    # for poly,bitdomain in polys:
+    #     subdomain = (terp.bits2range(bitdomain[0],domain,nqbit),terp.bits2range(bitdomain[1],domain,nqbit))
+    #     w = np.linspace(*subdomain,300)
+    #     plt.plot(w,poly(w))
+    # plt.show()
     # mpses = [terp.polynomial2MPS(poly,nqbit,pdomain,domain) for poly,pdomain in polys]
     # X = calgs.MPS_compressing_sum(mpses,0.1*precision,precision)
     # # X = qtt.networks.random_MPS(5,5,2)
@@ -120,9 +147,9 @@ if __name__=='__main__':
     # print(circuit)
     # list_dict = prep_list_dict(O)
     # print(qi.TwoQubitBasisDecomposer( qs.extensions.UnitaryGate(list_dict[0][0])))
-    register = qs.QuantumRegister(nqbit)
-    gate = Generate_circuit(f,precision,nqbit,domain,register,"normalp=0.001")
-    print(gate)
+    # register = qs.QuantumRegister(nqbit)
+    # gate = Generate_circuit(f,precision,nqbit,domain,register,"normalp=0.001")
+    # print(gate)
     from qiskit.circuit import qpy_serialization
     with open('normal.qpy', 'wb') as fd:
-        qpy_serialization.dump(gate,fd)
+        qpy_serialization.dump(circuit,fd)
