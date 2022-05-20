@@ -43,7 +43,7 @@ class Env_holder:
         i,j = i
         return self.env[i][j+1]
 
-    def __setitem__(self,i:tuple[int,int],value:torch.Tensor):
+    def __setitem__(self,i:tuple[int,int],value):
         i,j = i
         self.env[i][j+1] = value
 

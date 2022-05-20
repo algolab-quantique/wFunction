@@ -8,9 +8,9 @@ from . import interpolate as terp
 from . import mps2qbitsgates as mpqb
 from . import compress_algs as calgs
 from qiskit.converters import circuit_to_gate
-import quantit as qtt
+# import quantit as qtt
 from jax.config import config
-import torch
+# import torch
 config.update("jax_enable_x64", True)
 
 TN = qtn.TensorNetwork
@@ -91,12 +91,12 @@ def poly_by_part(f,precision,nqbit,domain,qbmask=0,fulldomain=None):
 def Generate_unitary_net(f,MPS_precision,Gate_precision,nqbit,domain,Nlayer):
     polys = poly_by_part(f,MPS_precision,nqbit,domain)
     mpses = [terp.polynomial2MPS(poly,nqbit,pdomain,domain) for poly,pdomain in polys]
-    Norm2 = np.sum([qtt.networks.contract(m,m) for m in mpses])
+    Norm2 = np.sum([m.H@m for m in mpses])
     mps = calgs.MPS_compressing_sum(mpses,Norm2,0.1*MPS_precision,MPS_precision)
-    oc = mps.orthogonality_center
-    mps[oc]/= np.sqrt(torch.tensordot(mps[oc],mps[oc],dims=([0,1,2],[0,1,2])))#Set the norm to one, freshly computer to correct any norm error in the opimization
+    oc = mps.calc_current_orthog_center()[0]
+    mps[oc]/= np.sqrt(mps[oc].H@mps[oc])#Set the norm to one, freshly computed to correct any norm error in the opimization
     unitary_set,Infidelity = mpqb.MPS2Gates(mps,Gate_precision,Nlayer)
-    print(Infidelity)
+    # print(Infidelity)
     return unitary_set
 
 def Generate_circuit(f,MPS_precision,Gate_precision,nqbit,domain,register,Nlayer,name="function_gate"):

@@ -58,7 +58,7 @@ def Phi_s(poly:Poly,s:int,x:float):
     p = poly.degree()
     return np.sum([poly.coef[k]*binom(k,s)*x**(k-s) for k in range(s,p+1)])
 
-def G_v2(poly:Poly,polydomain_start:int,fulldomain,n:int,nqbits:int):
+def G(poly:Poly,polydomain_start:int,fulldomain,n:int,nqbits:int):
     out = np.zeros([poly.degree()+1,2,poly.degree()+1])
     x0 = 0
     x1 = bits2range(1<<n,fulldomain,nqbits)-fulldomain[0]
@@ -80,7 +80,7 @@ def G_v2(poly:Poly,polydomain_start:int,fulldomain,n:int,nqbits:int):
 #             out[i,1,j] = bin*x1**(i-j)
 #     return out
 
-def polynomial2MPS_v2(poly:Poly, nqbits:int,polydomain:tuple[int,int], fulldomain:tuple[float,float]):
+def polynomial2MPS(poly:Poly, nqbits:int,polydomain:tuple[int,int], fulldomain:tuple[float,float]):
     """
     takes the polynomial defined on the polydomain and turn it into a qbits MPS with nqbits that exist on the fulldomain.
     polydomain must be given as two integers, those integer should convert to the support of the polynomial when given to bits2range with fulldomain for domain.
@@ -105,12 +105,12 @@ def polynomial2MPS_v2(poly:Poly, nqbits:int,polydomain:tuple[int,int], fulldomai
             x = bits2range( (1<<(Ntensor_support-1)),fulldomain,nqbits)-fulldomain[0]
             T[0,1,i] = Phi_s(poly,i,x)
         for n in range(1,Ntensor_support-1):
-            out[-n-1] = G_v2(poly,pd0,fulldomain,n,nqbits)
+            out[-n-1] = G(poly,pd0,fulldomain,n,nqbits)
         out[-1] = np.zeros((poly.degree()+1,2,1))
         out[-1][:,1,0] = np.array([bits2range(pd0+1,fulldomain,nqbits)**p for p in range(poly.degree()+1)])
         out[-1][:,0,0] = np.array([bits2range(pd0,fulldomain,nqbits)**p for p in range(poly.degree()+1)])
     else:
-        out[-1] = np.zeros(1,2,1)
+        out[-1] = np.zeros((1,2,1))
         out[-1][0,0,0] = poly(bits2range(pd0,fulldomain,nqbits))
         out[-1][0,1,0] = poly(bits2range(pd1,fulldomain,nqbits))
     out = [x.transpose(0,2,1) for x in out]
@@ -167,8 +167,8 @@ if __name__=="__main__":
     nbits = 4
     poly1 = interpolate(y,10,subdomain[0])
     poly2 = interpolate(y,10,subdomain[1])
-    mps1 = polynomial2MPS_v2(poly1,nbits,[0b000,0b111],domain)
-    mps2 = polynomial2MPS_v2(poly2,nbits,[0b1000,0b1111],domain)
+    mps1 = polynomial2MPS(poly1,nbits,[0b000,0b111],domain)
+    mps2 = polynomial2MPS(poly2,nbits,[0b1000,0b1111],domain)
     bitsdomain = bits2range(np.array(range(16)),domain,nbits)
     test_samples = y(bitsdomain)
     mps1_samples = np.array([ qtn.MPS_computational_state(format(i,'04b'),site_ind_id='lfq{}')@mps1 for i in range(0,16)])
