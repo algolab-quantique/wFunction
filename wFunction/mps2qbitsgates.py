@@ -1,6 +1,5 @@
 
 from jax.config import config
-from pyparsing import PrecededBy
 config.update("jax_enable_x64", True)
 
 import quimb as qb
@@ -21,9 +20,9 @@ import re
 # )
 
 
-from compress_algs import print_sizes
+from .compress_algs import print_sizes
 
-
+qtn.MatrixProductState
 TN = qtn.TensorNetwork
 def qttMPS2quimbTN(mps:qtt.networks.MPS, phys_label:str):
     b = 'b{}'

@@ -1,13 +1,12 @@
 import quimb.tensor as qtn
 import qiskit as qs
 from qiskit.quantum_info.operators import Operator
-import qiskit.quantum_info as qi
 import numpy as np
 import re
 from collections import defaultdict
-import interpolate as terp
-import mps2qbitsgates as mpqb
-import compress_algs as calgs
+from . import interpolate as terp
+from . import mps2qbitsgates as mpqb
+from . import compress_algs as calgs
 from qiskit.converters import circuit_to_gate
 import quantit as qtt
 from jax.config import config
@@ -120,8 +119,8 @@ if __name__=='__main__':
     import jax.numpy as jnp
     def f(x):
         return np.exp(-x**2)
-    nqbit = 10
-    Nlayer = 3
+    nqbit = 4
+    Nlayer = 2
     domain = (-3,3)
     Gate_precision = 1e-12
     MPS_precision = 0.001

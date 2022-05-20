@@ -3,11 +3,11 @@ import torch
 import interpolate as terp
 import jax.numpy as jnp
 import numpy as np
-import seaborn as sns
-sns.set_theme()
-import matplotlib.pyplot as plt
 
 if __name__=='__main__':
+    import seaborn as sns
+    sns.set_theme()
+    import matplotlib.pyplot as plt
     def f(x):
         return jnp.exp(-x**2/2)
     degree = 4

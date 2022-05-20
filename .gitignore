@@ -1,2 +1,4 @@
 *.qpy
 *.pyc
+wFunc_test/*
+*

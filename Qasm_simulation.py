@@ -1,6 +1,7 @@
 #%%
 
 import numpy as np
+import qiskit
 from qiskit import QuantumCircuit, transpile
 from qiskit.providers.aer import QasmSimulator
 import matplotlib.pyplot as plt
@@ -19,7 +20,7 @@ circuit = normal
 # print(normal)
 simulator = QasmSimulator()
 compiled_circuit = transpile(normal, simulator)
-shots = 2000000
+shots = 2000
 job = simulator.run(compiled_circuit, shots=shots)
 # print(compiled_circuit.decompose())
 result = job.result()
@@ -34,7 +35,7 @@ W_sv = [int(format(i,fmt_str)[-1::-1],2) for i in range(2**nqbit)]
 w = []
 c = []
 for bin in counts:
-    w.append(int("0b{}".format(bin[-1::-1]),2))
+    w.append(int(bin[-1::-1],2))
     c.append(counts[bin]/shots)
 #%%
 sv_data = pd.DataFrame({'w':W_sv,'SV':SV.data})
@@ -49,5 +50,9 @@ plt.show()
 # %%
 
 circuit2.decompose().draw("mpl")
-
+#%%
+c = qiskit.ClassicalRegister(5)
+#%%
+c0 = c[0]
+print(c0._repr )
 # %%
