@@ -12,6 +12,7 @@ Dans la cellule suivante, on importe wFunction, qiskit et numpy et on définit l
 
 
 ```python
+%%capture
 import wFunction as wf
 import qiskit as qs
 import numpy as np
@@ -20,8 +21,6 @@ def lognorm(x,mu,sigma):
 ```
 
     OMP: Info #276: omp_set_nested routine deprecated, please use omp_set_max_active_levels instead.
-    /opt/homebrew/lib/python3.9/site-packages/jax/_src/lib/__init__.py:33: UserWarning: JAX on Mac ARM machines is experimental and minimally tested. Please see https://github.com/google/jax/issues/5501 in the event of problems.
-      warnings.warn("JAX on Mac ARM machines is experimental and minimally tested. "
 
 
 Une fois la fonction définie, on crée un registre quantique avec le nombre de qubits désiré, et on appelle *Generate_circuit*.
@@ -30,24 +29,10 @@ Les arguments sont: la distribution, la précision de la discrétisation interm�
 
 
 ```python
+%%capture
 threeqb = qs.QuantumRegister(3)
 circ = wf.Generate_circuit(lambda x:lognorm(x,1,1),1e-5,Gate_precision=1e-12,nqbit=3,domain=[0,7],register=threeqb,Nlayer=1,name="lognormal")
 ```
-
-    /var/folders/zy/4mrzx5j90md14m853j49y34r0000gn/T/ipykernel_50884/2862979593.py:5: RuntimeWarning: divide by zero encountered in log
-      return np.exp( -(np.log(x)-mu)**2/(2*sigma**2) )
-    WARNING:absl:No GPU/TPU found, falling back to CPU. (Set TF_CPP_MIN_LOG_LEVEL=0 and rerun for more info.)
-    +0.000000000809 [best: +0.000000000809] :  46%|██████████            | 46/100 [00:00<00:00, 254.61it/s]
-
-
-    initial gradient:  4.588533222292136e-06
-
-
-    +0.000000000000 [best: +0.000000000000] :   0%|                   | 14/20000 [00:00<00:07, 2517.48it/s]
-
-
-    current error:  2.504663143554353e-13  unitarity error:  3.774174001801303e-14
-
 
 
 ```python
@@ -69,7 +54,17 @@ On peut passer en little-endian (et vice-versa) avec la méthode *reverse_bits*
 
 ```python
 circ = circ.reverse_bits()
+circ.draw('mpl')
 ```
+
+
+
+
+    
+![png](README_files/README_6_0.png)
+    
+
+
 
 Finalement, on peut observer le résultat d'une simulation.
 
@@ -98,3 +93,8 @@ plot_histogram(counts)
     
 
 
+
+
+```python
+
+```
