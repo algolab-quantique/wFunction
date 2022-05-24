@@ -6,6 +6,25 @@ Pour ce faire, une transformation linéaire est appliquée au domaine de la dist
 
  Les fonctions du module normalisent automatiquement la distribution.
 
+## Installation
+
+### Quimb
+Il est possible que la version de quimb disponible sur pypa ne soit pas suffisament à jour. Si c'est le cas, utilisez la commande 
+    
+    pip install git+https://github.com/jcmgray/quimb.git
+
+### Conda    
+
+L'installation avec conda n'est pas testé. Comme il s'agit d'un projet purement en python, il devrait fonctionné sans prolème.
+
+### Installation
+
+Télécharger le dépot git, puis à partir du dossier du projet, saisissez la commande
+    
+    pip install ./
+    
+
+
 ## Utilisation
 
 Dans la cellule suivante, on importe wFunction, qiskit et numpy et on définit la distribution. Noté que la distribution dans cet exemple à deux paramètres: mu et sigma. Nous allons devoir les fixer avant de donner cette fonction à wFunction.
@@ -19,9 +38,6 @@ import numpy as np
 def lognorm(x,mu,sigma):
     return np.exp( -(np.log(x)-mu)**2/(2*sigma**2) )
 ```
-
-    OMP: Info #276: omp_set_nested routine deprecated, please use omp_set_max_active_levels instead.
-
 
 Une fois la fonction définie, on crée un registre quantique avec le nombre de qubits désiré, et on appelle *Generate_circuit*.
 Noté qu'on fixe les paramètres de la distribution en la plaçant dans un lambda.
