@@ -9,7 +9,9 @@ Pour ce faire, une transformation linéaire est appliquée au domaine de la dist
 ## Installation
 
 ### Quimb
-Il est possible que la version de quimb disponible sur pypa ne soit pas suffisament à jour. Si c'est le cas, utilisez la commande 
+
+wFunction dépend de la libraireie de manipulation de tenseur Quimb.
+Malheureusement, il est possible que la version de quimb disponible sur pypa ne soit pas suffisament à jour. Si c'est le cas, utilisez la commande 
     
     pip install git+https://github.com/jcmgray/quimb.git
 
@@ -38,6 +40,9 @@ import numpy as np
 def lognorm(x,mu,sigma):
     return np.exp( -(np.log(x)-mu)**2/(2*sigma**2) )
 ```
+
+    OMP: Info #276: omp_set_nested routine deprecated, please use omp_set_max_active_levels instead.
+
 
 Une fois la fonction définie, on crée un registre quantique avec le nombre de qubits désiré, et on appelle *Generate_circuit*.
 Noté qu'on fixe les paramètres de la distribution en la plaçant dans un lambda.
