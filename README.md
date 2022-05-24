@@ -41,9 +41,6 @@ def lognorm(x,mu,sigma):
     return np.exp( -(np.log(x)-mu)**2/(2*sigma**2) )
 ```
 
-    OMP: Info #276: omp_set_nested routine deprecated, please use omp_set_max_active_levels instead.
-
-
 Une fois la fonction définie, on crée un registre quantique avec le nombre de qubits désiré, et on appelle *Generate_circuit*.
 Noté qu'on fixe les paramètres de la distribution en la plaçant dans un lambda.
 Les arguments sont: la distribution, la précision de la discrétisation intermédiaire de la fonction, la fidélité du circuit, le nombre de qubits, le domaine de la fonction, le registre quantique du circuit, le nombre de couches du circuit et, finalement, le nom du circuit.
