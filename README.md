@@ -41,7 +41,7 @@ from scipy.stats import lognorm as scplog
 def lognorm(x,mu,sigma):
     return scplog.pdf(np.exp(-mu)*x,sigma )
 ```
-Une fois la fonction définie, on crée un registre quantique avec le nombre de qubits désiré, et on appelle *Generate_circuit*.
+Une fois la fonction définie, on crée un registre quantique avec le nombre de qubits désiré, et on appelle *gen_circuit*.
 Noté qu'on fixe les paramètres de la distribution en la plaçant dans un lambda.
 Les arguments sont: la distribution, la précision de la discrétisation intermédiaire de la fonction, la fidélité du circuit, le nombre de qubits, le domaine de la fonction, le registre quantique du circuit, le nombre de couches du circuit et, finalement, le nom du circuit.
 
