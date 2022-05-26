@@ -65,27 +65,35 @@ def net2circuit(net:TN,nqbits,registers):
             circuit.unitary(**op)
     return circuit
 
-def poly_by_part(f,precision,nqbit,domain,qbmask=0,fulldomain=None):
+def poly_by_part(f,precision,nqbit,domain,qbmask=0,fulldomain=None,fullnqbits=None):
     """Recursive separtion of the domain until the interpolation is able to reconstruct with a small enough error. Each polynomial in the return is paired with its bit domain"""
-    # if fulldomain is None:
-    fulldomain = domain #Fulldomain was a mistake. only domain matter. refactor to remove it.
-    if nqbit >1:
-        poly = terp.interpolate(f,10,domain,fulldomain)
+    if fulldomain is None:
+        fulldomain = domain
+    if fullnqbits is None:
+        fullnqbits = nqbit
+    qbdomain = (qbmask,qbmask+(1<<nqbit)-1)
+    if nqbit > 1:
+        poly = terp.interpolate(f,10,domain,domain)
+        if (np.abs(f(domain[0])-poly(domain[0])) < precision and np.abs(f(domain[1])-poly(domain[1])) < precision ):
+            return [(poly,qbdomain)]
+        else:
+            nqbit-=1
+            midpoint = (domain[0]+domain[1])/2 #Je crois que c'est ici le problème. Les valeur obtenue ne correspondent pas au point échantillionné, mais le cheb de degree 10 est assé précis pour que ce ne soit pas grave jusqu'ici.
+            leftdomain = (domain[0],midpoint)
+            rightdomain=(midpoint,domain[1])
+            leftbitmask = 1<<nqbit|qbmask
+            return [*poly_by_part(f,precision,nqbit,leftdomain,qbmask,fulldomain,fullnqbits),*poly_by_part(f,precision,nqbit,rightdomain,leftbitmask,fulldomain,fullnqbits)]
     else:
         #we ran out of qbits... use a linear interpolation sampling the actual value the qbit can access.
         #There's no point in having a proper interpolation in this case.
+        #We need to transform x0 to the nearest power of two greater, and x1 smaller
         x0,x1 = domain
+        print(domain)
+        x0 = terp.bits2range(qbdomain[0],fulldomain,fullnqbits)
+        x1 = terp.bits2range(qbdomain[1],fulldomain,fullnqbits)
         y0,y1 = f(x0),f(x1)
         poly = np.polynomial.Polynomial([(y1*x0-y0*x1)/(x0-x1),(y0-y1)/(x0-x1)],domain,domain)
-    if (np.abs(f(domain[0])-poly(domain[0])) < precision and np.abs(f(domain[1])-poly(domain[1])) < precision ):
-        return [(poly,(qbmask,qbmask+(1<<nqbit)-1))]
-    else:
-        nqbit-=1
-        midpoint = (domain[0]+domain[1])/2
-        leftdomain = (domain[0],midpoint)
-        rightdomain=(midpoint,domain[1])
-        leftbitmask = 1<<nqbit|qbmask
-        return [*poly_by_part(f,precision,nqbit,leftdomain,qbmask,fulldomain),*poly_by_part(f,precision,nqbit,rightdomain,leftbitmask,fulldomain)]
+        return [(poly,qbdomain)]
 
 
 def Generate_unitary_net(f,MPS_precision,Gate_precision,nqbit,domain,Nlayer):

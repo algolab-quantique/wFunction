@@ -1,4 +1,5 @@
 
+from xml.dom import DomstringSizeErr
 from jax.config import config
 config.update("jax_enable_x64", True)
 
@@ -327,98 +328,120 @@ def optimize_unitaries(Onet:qtn.TensorNetwork,tags_re,stateA:qtn.TensorNetwork,s
         count +=1
     return Onet
 
-# if __name__=='__main__':
-#     import compress_algs as calgs
-#     import interpolate as terp
-#     import Generate_circuit as gerc
-#     import matplotlib.pyplot as plt
-#     import seaborn as sb
-#     sb.set_theme()
-#     # N = 6
-#     # X = qtt.networks.random_MPS(N,4,2)
-#     # qX = qttMPS2quimbTN(X,'lfq').compress_all_().compress_all_()
-#     # O = TwoqbitsLosange(qX)
-#     # print(O)
-#     # O.draw()
-#     def f(x):
-#         return np.exp(-(x)**2)
-#     nqbit = 10
-#     zero_state = trivial_state(nqbit)
-#     domain = (-3,3)
-#     w = np.linspace(*domain,2**nqbit)
-#     precision = 0.00001
-#     Gate_precision = precision#1e-12
-#     MPS_precision = precision #0.001
-#     polys = gerc.poly_by_part(f,MPS_precision,nqbit,domain)
-#     for poly,subdomain in polys:
-#         subdo = (terp.bits2range(subdomain[0],domain,nqbit),terp.bits2range(subdomain[1],domain,nqbit))
-#         ww = np.linspace(*subdo,300)
-#         plt.plot(ww,poly(ww), label = "poly {} {}".format(subdo,subdomain))
-#     plt.legend()
-#     plt.show()
-#     target_norm2 = 0
-#     mpses = [
-#         terp.polynomial2MPS(poly,nqbit,pdomain,domain)
-#         for poly,pdomain in polys]
-#     for mps in mpses:
-#         s = []
-#         for binstate in range(2**nqbit):
-#             M = qttMPS2quimbTN(mps,'lfq')
-#             ts = trivial_state(nqbit,'lfq',binstate)
-#             s.append(M@ts)
-#         plt.plot(w,s,label = "mps")
-#     plt.legend()
-#     plt.show()
-#     for mps in mpses:
-#         target_norm2 += qtt.networks.contract(mps,mps)
-#     X = calgs.MPS_compressing_sum(mpses,target_norm2,0.1*MPS_precision,MPS_precision)
-#     # print_sizes(X)
-#     Norm = np.sqrt(qtt.networks.contract(X,X))
-#     print("NORM:",Norm)
-#     X[X.orthogonality_center] /= Norm
-#     qX = qttMPS2quimbTN(X,'lfq')
-#     SM = []
-#     for binstate in range(2**nqbit):
-#         ts = trivial_state(nqbit,'lfq',binstate)
-#         SM.append(qX@ts*Norm)
-#     # plt.plot(w,SM)
-#     # plt.show()
-#     pass
-#     O = TwoqbitsStaircaseLayers(qX,1)
-#     # O.draw()
-#     O, inf = MPS2Gates(X,Gate_precision,1,max_count=10)
-#     # O.draw(show_tags=True, show_inds=True)
-#     # O = optimize_unitaries(O,"O\d+",zero_state,qX,Gate_precision,max_iteration=100)
-#     # for t in qX:
-#     #     print(t)
-#     SO = []
-#     SM = []
-#     # for t in O:
-#     #     print(t)
-#     # print(zero_state)
-#     for binstate in range(2**nqbit):
-#         ts = trivial_state(nqbit,'lfq',binstate)
-#         Val = (zero_state&O)@ts
-#         SO.append(Val)
-#         SM.append(qX@ts)
-#     # print(SO)
-#     # print(SM)
-#     SO = np.array(SO)
-#     SM = np.array(SM)
-#     print( "expected state vector" ,SM)
-#     print( "expected operators (no permute): ")
-#     for t in O:
-#         print(t.tags)
-#         print(t.data.reshape(4,4))
-#     # print("<0|O^d O |0>",(zero_state&O)@(zero_state&O))
-#     # print(qX@qX)
-#     # F = (zero_state&O)@qX
-#     # print(F)
-#     # print(np.dot(SO,SM))
-#     # print((1-F)**2)
-#     plt.plot(SO)
-#     plt.plot(SM)
-#     plt.show()
+if __name__=='__main__':
+    #fiddling to make this file work when loaded directly...
+    import sys
+    import os 
+    from pathlib import Path
+
+    file = Path(__file__).resolve()
+    parent, top = file.parent, file.parents[1]
+    sys.path.append(str(top))
+    try:
+        sys.path.remove(str(parent))
+    except ValueError: # Already removed
+        pass
+    import wFunction
+    __package__ = 'wFunction'
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    #fiddling done
+    from . import compress_algs as calgs
+    from . import interpolate as terp
+    from . import  Generate_circuit as gerc
+    import matplotlib.pyplot as plt
+    import seaborn as sb
+    sb.set_theme()
+    # N = 6
+    # X = qtt.networks.random_MPS(N,4,2)
+    # qX = qttMPS2quimbTN(X,'lfq').compress_all_().compress_all_()
+    # O = TwoqbitsLosange(qX)
+    # print(O)
+    # O.draw()
+    def f(x):
+        return np.exp(-(x)**2)
+    from scipy.stats import lognorm as scplog
+    def lognorm(x,mu,sigma):
+        return scplog.pdf(np.exp(-mu)*x,sigma )
+    f = lambda x : lognorm(x,1,1)
+    nqbit = 3
+    zero_state = trivial_state(nqbit)
+    domain = (0,8)
+    X = np.linspace(domain[0],domain[1],1000)
+    w = np.linspace(*domain,2**nqbit)
+    precision = 0.00001
+    Gate_precision = precision#1e-12
+    MPS_precision = precision #0.001
+    polys = gerc.poly_by_part(f,MPS_precision,nqbit,domain)
+    plt.plot(X,f(X))
+    for poly,subdomain in polys:
+        subdo = (terp.bits2range(subdomain[0],domain,nqbit),terp.bits2range(subdomain[1],domain,nqbit))
+        ww = np.linspace(*subdo,300)
+        plt.plot(ww,poly(ww), label = "poly {} {}".format(subdo,subdomain))
+    plt.legend()
+    plt.show()
+    target_norm2 = 0
+    mpses = [
+        terp.polynomial2MPS(poly,nqbit,pdomain,domain)
+        for poly,pdomain in polys]
+    for mps in mpses:
+        s = []
+        for binstate in range(2**nqbit):
+            M = mps
+            ts = trivial_state(nqbit,'lfq',binstate)
+            s.append(M@ts)
+        plt.plot(w,s,label = "mps")
+    plt.legend()
+    plt.show()
+    for mps in mpses:
+        target_norm2 += mps@mps
+    X = calgs.MPS_compressing_sum(mpses,target_norm2,0.1*MPS_precision,MPS_precision)
+    # print_sizes(X)
+    Norm = np.sqrt(X@X)
+    print("NORM:",Norm)
+    X /= Norm
+    qX = X
+    SM = []
+    for binstate in range(2**nqbit):
+        ts = trivial_state(nqbit,'lfq',binstate)
+        SM.append(qX@ts*Norm)
+    # plt.plot(w,SM)
+    # plt.show()
+    pass
+    O = TwoqbitsStaircaseLayers(qX,1)
+    # O.draw()
+    O, inf = MPS2Gates(X,Gate_precision,1,max_count=10)
+    # O.draw(show_tags=True, show_inds=True)
+    # O = optimize_unitaries(O,"O\d+",zero_state,qX,Gate_precision,max_iteration=100)
+    # for t in qX:
+    #     print(t)
+    SO = []
+    SM = []
+    # for t in O:
+    #     print(t)
+    # print(zero_state)
+    for binstate in range(2**nqbit):
+        ts = trivial_state(nqbit,'lfq',binstate)
+        Val = (zero_state&O)@ts
+        SO.append(Val)
+        SM.append(qX@ts)
+    # print(SO)
+    # print(SM)
+    SO = np.array(SO)
+    SM = np.array(SM)
+    print( "expected state vector" ,SM)
+    print( "expected operators (no permute): ")
+    for t in O:
+        print(t.tags)
+        print(t.data.reshape(4,4))
+    # print("<0|O^d O |0>",(zero_state&O)@(zero_state&O))
+    # print(qX@qX)
+    # F = (zero_state&O)@qX
+    # print(F)
+    # print(np.dot(SO,SM))
+    # print((1-F)**2)
+    plt.plot(SO)
+    plt.plot(SM)
+    plt.show()
 
 
 
