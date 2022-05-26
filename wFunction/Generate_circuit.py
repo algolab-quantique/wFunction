@@ -88,7 +88,6 @@ def poly_by_part(f,precision,nqbit,domain,qbmask=0,fulldomain=None,fullnqbits=No
         #There's no point in having a proper interpolation in this case.
         #We need to transform x0 to the nearest power of two greater, and x1 smaller
         x0,x1 = domain
-        print(domain)
         x0 = terp.bits2range(qbdomain[0],fulldomain,fullnqbits)
         x1 = terp.bits2range(qbdomain[1],fulldomain,fullnqbits)
         y0,y1 = f(x0),f(x1)
