@@ -1,5 +1,5 @@
 *.qpy
 *.pyc
 wFunc_test/*
-*
 dist/*
+*.DS_Store*
