@@ -13,9 +13,13 @@ from .Chebyshev import pad_reshape
 qtn.MatrixProductState
 TN = qtn.TensorNetwork
 
-class layerGenerator:
+class stacklayer:
 
-    stack_control = -1
+    def __init__(self,stack_ctrl = -1,data_gen = jnp.eye(4,4)):
+        self.stack_control = -1
+        self.data_gen = data_gen.reshape(2,2,2,2)
+        
+
     def stackLayer(self,input_idx, output_idx,Nlink, min_layer_number,dtype=jnp.float64):
         out = qtn.TensorNetwork([])
         i = 0
@@ -41,14 +45,36 @@ class layerGenerator:
                 if i == control:
                     continue
                 c_out_ind = uuid.format(i)
-                out &= qtn.Tensor(data =jnp.eye(4,4,dtype=dtype).reshape(2,2,2,2), inds = [left_in_ind.format(i),control_in_ind,left_out_ind.format(i),c_out_ind],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
+                out &= qtn.Tensor(data = jnp.copy(self.data_gen), inds = [left_in_ind.format(i),control_in_ind,left_out_ind.format(i),c_out_ind],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
                 control_in_ind = c_out_ind
             i = stop
             if control != i:
-                out &= qtn.Tensor(data =jnp.eye(4,4,dtype=dtype).reshape(2,2,2,2), inds = [left_in_ind.format(i),control_in_ind,output_idx.format(i),output_idx.format(control)],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
+                out &= qtn.Tensor(data = jnp.copy(self.data_gen), inds = [left_in_ind.format(i),control_in_ind,output_idx.format(i),output_idx.format(control)],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
         else:
-            out &= qtn.Tensor(data =jnp.eye(4,4,dtype=dtype).reshape(2,2,2,2), inds = [input_idx.format(start),input_idx.format(control),output_idx.format(start),output_idx.format(control)],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
+            out &= qtn.Tensor(data =jnp.copy(self.data_gen), inds = [input_idx.format(start),input_idx.format(control),output_idx.format(start),output_idx.format(control)],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
         return out
+
+    def __call__(self,input_idx, output_idx,Nlink, min_layer_number,dtype=jnp.float64):
+        return self.stackLayer(input_idx, output_idx,Nlink, min_layer_number,dtype=dtype) 
+
+
+class layer_compose():
+    def __init__(self,*layers):
+        self.layers = layers
+    
+    def __call__(self,input_idx, output_idx,Nlink, min_layer_number,dtype=jnp.float64):
+        n_layer = len(self.layers)
+        L_in_idx = input_idx
+        uuid = qtn.rand_uuid() + '{}'
+        out = qtn.TensorNetwork([])
+        for i in range(n_layer-1):
+            L_out_idx = uuid.format(i) + '{}'
+            out &= self.layers[i](L_in_idx,L_out_idx,Nlink,min_layer_number,dtype)
+            L_in_idx = L_out_idx
+        out &= self.layers[-1](L_in_idx,output_idx,Nlink,min_layer_number,dtype)
+        return out
+
+
 
 def TwoqbitsLayers(mpo:qtn.MatrixProductOperator,Nlayer:int,dtype=jnp.float64,layerGenerator = generate_staircase_operators):
     L = (mpo.L) #number of qbits
@@ -56,9 +82,9 @@ def TwoqbitsLayers(mpo:qtn.MatrixProductOperator,Nlayer:int,dtype=jnp.float64,la
     lower_ind_id = mpo.upper_ind_id
     upper_ind_id = mpo.lower_ind_id
     for layer in range(0,Nlayer-1 ):
-        out &= layerGenerator(lower_ind_id,"l{}q{}".format(layer+1,"{}"),L-1,layer,dtype=dtype)
+        out &= layerGenerator(lower_ind_id,"l{}q{}".format(layer+1,"{}"),L-1,layer)
         lower_ind_id = "l{}q{}".format(layer+1,"{}")
-    out &= layerGenerator(lower_ind_id,upper_ind_id,L-1,Nlayer-1,dtype=dtype)
+    out &= layerGenerator(lower_ind_id,upper_ind_id,L-1,Nlayer-1)
     return out
 
 import quimb
@@ -127,7 +153,7 @@ def Proj_MPSO2Gates(mpo:qtn.MatrixProductOperator,precision,Nlayer,max_count=40)
     mpo = mpo.copy()
     I = np.array([[1.,0.],[0.,1.]])
     O_gen_mpo = qtn.MatrixProductOperator([ *[x.data for x in mpo.tensors[:-1]],pad_reshape(mpo.tensors[-1].data),I.reshape(1,*I.shape) ],site_tag_id=mpo.site_tag_id,upper_ind_id=mpo.upper_ind_id,lower_ind_id=mpo.lower_ind_id)
-    O = TwoqbitsStaircaseLayers(O_gen_mpo,Nlayer,dtype=jnp.complex128)
+    O = TwoqbitsLayers(O_gen_mpo,Nlayer,dtype=jnp.complex128)
     L = generate_Lagrange_multipliers(O)
     # print("O",O)
     # print("X",qX)
@@ -167,32 +193,26 @@ def Proj_MPSO2Gates(mpo:qtn.MatrixProductOperator,precision,Nlayer,max_count=40)
     O = normalize_gates(OL_opt)
     return O,error
 
-def MPSO2Gates(mpo:qtn.MatrixProductOperator,precision,Nlayer,max_count=40):
+def MPSO2Gates(mpo:qtn.MatrixProductOperator,precision,Nlayer,max_count=10,layer = layer_compose(stacklayer(-1),generate_staircase_operators)):
     nmpo = mpo.copy()
     sqrthalf = np.sqrt(0.5)
     for i,m in enumerate(mpo):
         nmpo[i] = m*0.5
     mpo = nmpo
-    if mpo.L == 3:
-        O = qtn.TensorNetwork([qtn.Tensor(data = jnp.eye(8).reshape(2,2,2,2,2,2),inds=('k0','k1','k2','b0','b1','b2'))])
-        L = 0
-        def loss(circuit,mpo,L,id,C,m,id_net):
-            return Infidelity(circuit,mpo,id_net)
-    else:
-        O = TwoqbitsStaircaseLayers(mpo,Nlayer)
-        L = generate_Lagrange_multipliers(O)
-        loss = full_loss    
+    O = TwoqbitsLayers(mpo,Nlayer,layerGenerator=layer)
+    L = generate_Lagrange_multipliers(O)
+    loss = full_loss    
     # print("O",O)
     # print("X",qX)
     # print("ts",ts)
     id_net = gen_id_net(mpo,sqrthalf)
-    print(Infidelity(O,mpo,id_net))
+    print("Initial error",Infidelity(O,mpo,id_net))
     id = qtn.Tensor(data = jnp.eye(4,4).reshape(2,2,2,2), inds=('a','b','c','d'))
     optmzr = TNOptimizer(
         O,
         loss_fn = loss,
         # norm_fn=normalize_gates,
-        loss_kwargs = {'C':0.,'m':50},
+        loss_kwargs = {'C':0.1,'m':50},
         loss_constants={'mpo': mpo, 'id_net':id_net,'id':id,'L':L},  # this is a constant TN to supply to loss_fn: psi,trivial_state, id, C,m)
         autodiff_backend='jax',      # {'jax', 'tensorflow', 'autograd','torch'}
         optimizer='L-BFGS-B',
@@ -204,9 +224,6 @@ def MPSO2Gates(mpo:qtn.MatrixProductOperator,precision,Nlayer,max_count=40):
     # print(Infidelity(O,qX,ts))
     OL_opt = optmzr.optimize(100)    
     # OL_opt = normalize_gates(TN(OL_opt['O']))&TN(OL_opt['L'])
-    if mpo.L <= 3:
-        def unitarity_cost2(OL_opt,L,id):
-            return 2**mpo.L - OL_opt@OL_opt.H
     while error>precision and count <max_count:
         optmzr.reset(OL_opt,loss_target=precision)
         val,grad = optmzr.vectorized_value_and_grad(optmzr.vectorizer.vector)
@@ -220,9 +237,6 @@ def MPSO2Gates(mpo:qtn.MatrixProductOperator,precision,Nlayer,max_count=40):
         # print("count: ", count)
         print("current error: ", error, " unitarity error: ", unitarity_cost2(OL_opt,L,id))
         count += 1 
-    if mpo.L > 3:
-        O = normalize_gates(OL_opt)
-    else:
-        O = OL_opt
+    O = normalize_gates(OL_opt)
     return O,error
 # %%

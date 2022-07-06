@@ -12,6 +12,8 @@ import quimb.tensor as qtn
 import matplotlib.pyplot as plt
 import seaborn as sb
 import numpy as np
+import jax.numpy as jnp
+from wFunction.mps2qbitsgates import staircaselayer
 sb.set_theme()
 # %%
 
@@ -29,17 +31,34 @@ def g(x):
 # MPO_g = make_MPO(g,nqbit,precision/2) 
 print("----------")
 cMPO = controled_MPO(f,nqbit+1,precision**2)
-print(cMPO)
-print("----------")
-gates,error = mqg.MPSO2Gates(cMPO,precision,1)
+# print(cMPO)
+# print("----------")
+#%%
+lg = mqg.stacklayer(-1,np.random.rand(4,4))
+stl = staircaselayer(np.random.rand(4,4))
+# lg = mqg.layer_compose(lg,lg1)
+gates,error = mqg.MPSO2Gates(cMPO,precision,2,layer=stl)
+#%%
+cgates = gates.contract()
+#%%
+# print(gates.contract().data.reshape(8,8) , cMPO.contract().data.reshape(8,8))
+# plt.semilogy(jnp.abs(gates.contract().data - cMPO.contract().data).flatten())
+# plt.show()
+cgt = cgates.transpose('k0','k1','k2','b0','b1','b2')
+cmt = cMPO.contract().transpose_like(cgt)
+plt.semilogy(np.abs(cgt.data.reshape(8*8) - cmt.data.reshape(8*8)))
+#%%
+from wFunction.mps2qbitsgates import generate_staircase_operators
+# lg = mqg.layer_compose(generate_staircase_operators)
+Net = lg("in{}","out{}",2,0)
+print(Net)
+Net.draw(iterations=20,initial_layout="kamada_kawai")
+print(Net.contract().data.reshape(8,8))
 
-print(gates.tensors[0])
-print([gates.tensors[0].data.reshape(8,8)[i,i] for i in range(8)])
-print([gates.tensors[0].data.reshape(8,8)[i,i+1] for i in range(7)])
-# print(error)
-# nqbit = 5
-# register = qs.QuantumRegister(nqbit)
-# circuit = Generate_g_circuit(f,1E-8,1e-8,nqbit,(-1,1),register,1)
-# circuit.draw()
+#%%
+# nqbit = 3
+register = qs.QuantumRegister(nqbit)
+circuit = Generate_g_circuit(f,1E-8,1e-8,nqbit,(-1,1),register,1)
+circuit.draw()
 
 # %%

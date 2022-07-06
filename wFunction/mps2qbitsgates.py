@@ -87,20 +87,27 @@ def generate_losange_operators(link:int,midlink:int,n_op:int,left_idx,right_idx)
         out &= qtn.Tensor(data =jnp.eye(4,4).reshape(2,2,2,2), inds = [left_idx2[2*i+1],right_idx2[2*i+1], left_idx2[2*i],right_idx2[2*i]],tags=['O','O{}{}'.format(link,n_op-i-1)])
     return out
 
-def generate_staircase_operators(input_idx, output_idx,Nlink, min_layer_number,dtype=jnp.float64):
-    out = qtn.TensorNetwork([])
-    i = 0
-    uuid = qtn.rand_uuid()+"{}"
-    if Nlink > 1:
-        out &= qtn.Tensor(data =jnp.eye(4,4,dtype=dtype).reshape(2,2,2,2), inds = [input_idx.format(i),input_idx.format(i+1),output_idx.format(i),uuid.format(i+1)],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
-        for i in range(1,Nlink-1):
-            out &= qtn.Tensor(data =jnp.eye(4,4,dtype=dtype).reshape(2,2,2,2), inds = [uuid.format(i),input_idx.format(i+1),output_idx.format(i),uuid.format(i+1)],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
-        i = Nlink-1
-        out &= qtn.Tensor(data =jnp.eye(4,4,dtype=dtype).reshape(2,2,2,2), inds = [uuid.format(i),input_idx.format(i+1),output_idx.format(i),output_idx.format(i+1)],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
-    else:
-        out &= qtn.Tensor(data =jnp.eye(4,4,dtype=dtype).reshape(2,2,2,2), inds = [input_idx.format(i),input_idx.format(i+1),output_idx.format(i),output_idx.format(i+1)],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
-    return out
+class staircaselayer():
+    def __init__(self,data = jnp.eye(4,4)):
+        self.data = data.reshape(2,2,2,2)
+    def __call__(self,input_idx, output_idx,Nlink, min_layer_number,dtype=jnp.float64) -> qtn.TensorNetwork:
+        out = qtn.TensorNetwork([])
+        i = 0
+        uuid = qtn.rand_uuid()+"{}"
+        if Nlink > 1:
+            out &= qtn.Tensor(data =jnp.copy(self.data), inds = [input_idx.format(i),input_idx.format(i+1),output_idx.format(i),uuid.format(i+1)],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
+            for i in range(1,Nlink-1):
+                out &= qtn.Tensor(data =jnp.copy(self.data), inds = [uuid.format(i),input_idx.format(i+1),output_idx.format(i),uuid.format(i+1)],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
+            i = Nlink-1
+            out &= qtn.Tensor(data =jnp.copy(self.data), inds = [uuid.format(i),input_idx.format(i+1),output_idx.format(i),output_idx.format(i+1)],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
+        else:
+            out &= qtn.Tensor(data =jnp.copy(self.data), inds = [input_idx.format(i),input_idx.format(i+1),output_idx.format(i),output_idx.format(i+1)],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
+        return out
 
+stl = staircaselayer()
+
+def generate_staircase_operators(input_idx, output_idx,Nlink, min_layer_number,dtype=jnp.float64):
+    return stl(input_idx, output_idx,Nlink, min_layer_number,dtype=dtype)
 
 def TwoqbitsStaircaseLayers(mps:qtn.TensorNetwork1D,Nlayer:int):
     L = len(mps.tensor_map) #number of qbits
