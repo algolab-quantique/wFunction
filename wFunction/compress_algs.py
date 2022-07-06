@@ -100,11 +100,11 @@ def mpsmps_env_prep(mpsA:qtn.MatrixProductState,mpsB:qtn.MatrixProductState):
     else:
         oc = mpsA.L-1
     for i in range(oc):
-        outleft.append((outleft[-1]|mpsA[i]|mpsB[i]).contract())
+        outleft.append((outleft[-1]|mpsA[i].H|mpsB[i]).contract())
     outright = []
     outright.append(qtn.Tensor(data = 1,inds = ()))
     for i in range(mpsA.L - oc - 1):
-        outright.append((outright[-1]|mpsA[-i-1]|mpsB[-i-1]).contract())
+        outright.append((outright[-1]|mpsA[-i-1].H|mpsB[-i-1]).contract())
     outright.reverse()
     return outleft+[qtn.Tensor()]+outright
 

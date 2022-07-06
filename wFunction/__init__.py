@@ -2,10 +2,8 @@
 An amazing circuit generator
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 
-from .Generate_circuit import Generate_circuit as gen_circuit
-
-from .Generate_circuit import Generate_gate as gen_gate
+from .Generate_circuit import Generate_f_circuit,Generate_f_gate,Generate_g_circuit,Generate_g_gate
 

@@ -7,6 +7,8 @@ from collections import defaultdict
 from . import interpolate as terp
 from . import mps2qbitsgates as mpqb
 from . import compress_algs as calgs
+from . import mpo2qbitsgates as mqg
+from .Chebyshev import controled_MPO
 from qiskit.converters import circuit_to_gate
 # import quantit as qtt
 from jax.config import config
@@ -54,8 +56,8 @@ def prep_list_dict(tn:TN):
         md[layer].append({"obj":qtens2operator(t), "qubits":((link),(link)+1),'label':tags[2]})
     return md
 
-def net2circuit(net:TN,nqbits,registers):
-    circuit = qs.QuantumCircuit(registers)
+def net2circuit(net:TN,nqbits,registers,name):
+    circuit = qs.QuantumCircuit(registers,name=name)
     op_dict = prep_list_dict(net)
     largest_key = max(op_dict.keys())
     # for layer in range(largest_key,-1,-1): #reverse order of application of the gates.
@@ -106,16 +108,29 @@ def Generate_unitary_net(f,MPS_precision,Gate_precision,nqbit,domain,Nlayer):
     # print(Infidelity)
     return unitary_set
 
-def Generate_circuit(f,MPS_precision,Gate_precision,nqbit,domain,register,Nlayer,name="function_gate"):
-    unitary_set=Generate_unitary_net(f,MPS_precision,Gate_precision,nqbit,domain,Nlayer)
-    circuit = net2circuit(unitary_set,nqbit,register)
+def Generate_f_circuit(f,MPS_precision,Gate_precision,nqbit,domain,register,Nlayer,name="function_gate"):
+    unitary_set = Generate_unitary_net(f,MPS_precision,Gate_precision,nqbit,domain,Nlayer)
+    circuit = net2circuit(unitary_set,nqbit,register,name)
     # circuit.name = name
     return circuit
 
-def Generate_gate(f,MPS_precision,Gate_precision,nqbit,domain,Nlayer,name="function_gate"):
+def Generate_f_gate(f,MPS_precision,Gate_precision,nqbit,domain,Nlayer,name="function_gate"):
     register = qs.QuantumRegister(nqbit)
-    return circuit_to_gate(Generate_circuit(f,MPS_precision,Gate_precision,nqbit,domain,register,Nlayer,name))
+    return circuit_to_gate(Generate_f_circuit(f,MPS_precision,Gate_precision,nqbit,domain,register,Nlayer,name))
 
+def Generate_g_circuit(f,MPO_precision,Gate_precision,nqbit,domain,register,Nlayer,endian="big",name="function_gate"):
+    a,b = domain
+    dtrans = lambda x :( (b-a) * x + b+a)/2
+    ff = lambda x: f(dtrans(x))
+    MPO_func = controled_MPO(ff,nqbit,MPO_precision,endian) 
+    gates,error = mqg.Proj_MPSO2Gates(MPO_func,Gate_precision,Nlayer)
+    circuit = net2circuit(gates,nqbit,register,name)
+    return circuit
+
+def Generate_g_gate(f,MPS_precision,Gate_precision,nqbit,domain,Nlayer,name="function_gate"):
+    register = qs.QuantumRegister(nqbit)
+    return circuit_to_gate(Generate_g_circuit(f,MPS_precision,Gate_precision,nqbit,domain,register,Nlayer,name))
+    
 
 if __name__=='__main__':
     # import mps2qbitsgates as mpqb 
@@ -132,7 +147,7 @@ if __name__=='__main__':
     Gate_precision = 1e-12
     MPS_precision = 0.001
     register = qs.QuantumRegister(nqbit)
-    circuit = Generate_circuit(f,MPS_precision,Gate_precision,register.size,domain,register,Nlayer)
+    circuit = Generate_f_circuit(f,MPS_precision,Gate_precision,register.size,domain,register,Nlayer)
     print(circuit)
     # polys = poly_by_part(f,precision,nqbit,domain)
     # for poly,bitdomain in polys:
