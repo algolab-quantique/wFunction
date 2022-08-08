@@ -18,7 +18,8 @@ if __name__=='__main__' and (__package__ is None or __package__ == ''):
 
 
 
-from typing import Any
+from typing import Any, Union
+
 from sympy import Lambda
 from torch import le
 from . import interpolate as terp
@@ -47,12 +48,20 @@ def gen_X(domain:tuple[float,float],nbits:int):
 
 
 
-def Chebyshevs(order:int,nqbits:int,tol:float=1e-13):
+def Chebyshevs(order:int,*,nqbits:int=0,tol:float=1e-13, X:Union[None,qtn.MatrixProductOperator] = None)-> list[qtn.MatrixProductOperator]:
+    """Generate the chebyshev function evaluated with the operator X for arguement. 
+    If no operator is supplied, then a diagonal operator with equidistant eigenvalues
+    in [-1,1] is used. The series of polynomial will not add to a convergent sum for 
+    any of the operator's eigenvalues outside the domain [-1,1]."""
+    if X is None:
+        assert(nqbits != 0)
+        X = gen_X((-1,1),nqbits)
+    nqbits = X.L
     C0 = [np.array([[np.eye(2)]]) for i in range(nqbits)]
     C0[0] = C0[0][0,:,:,:]
-    C0[-1] = C0[-1][:,0,:,:]
+    if nqbits > 1:
+        C0[-1] = C0[-1][:,0,:,:]
     C0 = qtn.MatrixProductOperator(C0,site_tag_id='I{}')
-    X = gen_X((-1,1),nqbits)
     C1 = X 
     out = [C0,C1]
     for i in range(order-1):
@@ -152,23 +161,22 @@ def pad_reshape(c):
 
 def reverse_qbit_order(mpo:qtn.MatrixProductOperator):
     L = len(mpo.tensors)-1
-    c = mpo.permute_arrays()
-    data = c.tensors[-1::-1]
-    CMPO = qtn.MatrixProductOperator(data,shape='rlud',site_tag_id=c.site_tag_id,upper_ind_id=c.upper_ind_id,lower_ind_id=c.lower_ind_id)
+    data = [mpo[-1].data , *[i.data.transpose(1,0,2,3) for i in mpo[:].tensors[-2:0:-1]], mpo[0].data ]#trickery to make sure the MPO is in order, because inverse listing doesn't work directly on the MPO.
+    CMPO = qtn.MatrixProductOperator(data,site_tag_id=mpo.site_tag_id,upper_ind_id=mpo.upper_ind_id,lower_ind_id=mpo.lower_ind_id)
+    CMPO.permute_arrays("lrud")
     return CMPO
 
 def cMPO_impl(Cf:Chebyshev,Cg:Chebyshev,chebyshev_order:int,nqbit:int,tol:float,endian:str)->qtn.MatrixProductOperator:
-    CMPO = Chebyshevs(chebyshev_order,nqbit-1,tol)
+    CMPO = Chebyshevs(chebyshev_order,nqbits = nqbit-1,tol = tol)
+    for i,c in enumerate(CMPO):
+        CMPO[i].permute_arrays("lrud")
     if endian != "little":
         for i,c in enumerate(CMPO):#reverse the MPO to account for desired endianess
             CMPO[i] = reverse_qbit_order(c)
-    else:
-        for i,c in enumerate(CMPO):#reverse the MPO to account for desired endianess
-            CMPO[i].permute_arrays()
     Y = np.array([[0.,1.],[1.,0.]])
     I = np.array([[1.,0.],[0.,-1.]])
-    CMPOY = [coef*qtn.MatrixProductOperator([ *[x.data for x in mpo.tensors[:-1]],pad_reshape(mpo.tensors[-1].data),Y.reshape(1,*Y.shape) ],site_tag_id=mpo.site_tag_id,upper_ind_id=mpo.upper_ind_id,lower_ind_id=mpo.lower_ind_id) for mpo,coef in zip(CMPO,Cf.coef)]
-    CMPOI = [coef*qtn.MatrixProductOperator([ *[x.data for x in mpo.tensors[:-1]],pad_reshape(mpo.tensors[-1].data),I.reshape(1,*I.shape) ],site_tag_id=mpo.site_tag_id,upper_ind_id=mpo.upper_ind_id,lower_ind_id=mpo.lower_ind_id) for mpo,coef in zip(CMPO,Cg.coef)]
+    CMPOY = [coef*qtn.MatrixProductOperator([ *[mpo[i].data for i,x in enumerate(mpo.tensors[:-1])],pad_reshape(mpo[mpo.L-1].data),Y.reshape(1,*Y.shape) ],site_tag_id=mpo.site_tag_id,upper_ind_id=mpo.upper_ind_id,lower_ind_id=mpo.lower_ind_id) for mpo,coef in zip(CMPO,Cf.coef)]
+    CMPOI = [coef*qtn.MatrixProductOperator([ *[mpo[i].data for i,x in enumerate(mpo.tensors[:-1])],pad_reshape(mpo[mpo.L-1].data),I.reshape(1,*I.shape) ],site_tag_id=mpo.site_tag_id,upper_ind_id=mpo.upper_ind_id,lower_ind_id=mpo.lower_ind_id) for mpo,coef in zip(CMPO,Cg.coef)]
     return MPO_compressing_sum([*CMPOY,*CMPOI],tol,tol*4) 
 
 @multimethod
@@ -200,16 +208,18 @@ if __name__=='__main__':
     import matplotlib.pyplot as plt
     def f(x):
         return jnp.exp(-x**2/2)
-    cheb_fun = Chebyshev.interpolate(f,12,(-2,2))
+    #domain must be brought to (-1,1) from whatever it originally is for this to work.
+    cheb_fun = Chebyshev.interpolate(f,12,(-1,1))
     nqbit = 10
     MPO_func = func2MPO(cheb_fun,nqbit,1e-8) 
     print(MPO_func)
-    x = np.linspace(-2,2,2**nqbit)
+    x = np.linspace(-1,1,2**nqbit)
     tfunc = test_diagonnal(MPO_func)
-    plt.plot(x,f(x))
-    plt.plot(x,tfunc)
-    plt.plot(x,cheb_fun(x))
+    plt.plot(x,f(x),label='f')
+    plt.plot(x,tfunc,label='tfunc')
+    plt.plot(x,cheb_fun(x),label='cheby')
+    plt.legend()
     plt.show()
-    plt.semilogy(x,abs(cheb_fun(x)- tfunc))
+    plt.semilogy(x,abs(cheb_fun(x)- tfunc),label='tensor error')
     plt.show()
 

@@ -10,7 +10,7 @@ def lognorm(x,mu,sigma):
 #%%
 nqbit = 5
 threeqb = qs.QuantumRegister(nqbit)
-circ = wf.Generate_f_circuit(lambda x:(lognorm(x,1,1)),1e-5,1e-12,nqbit,[0.00000001,7],threeqb,2,"lognormal")
+circ = wf.Generate_f_circuit(lambda x:(lognorm(x,1,1)),1e-5,1e-12,nqbit,[0.00000001,7],threeqb,1,"lognormal")
 circ.draw('mpl')
 #%%
 filename = "lognorm_{}q.qpy".format(nqbit)

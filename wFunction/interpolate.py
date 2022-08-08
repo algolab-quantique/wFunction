@@ -36,7 +36,7 @@ Sum and condense all those (2^k) MPS into a single one.
 
 def bits2range(bits:int,domain:tuple[float,float],nbits:int):
     """
-    Linear map from an int in [0,2**nbits[ to [a,b[ 
+    Linear map from an int in [0,(2**nbits)-1] to [a,b] 
     """
     b = domain[1]
     a = domain[0]

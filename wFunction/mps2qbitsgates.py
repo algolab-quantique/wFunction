@@ -88,8 +88,9 @@ def generate_losange_operators(link:int,midlink:int,n_op:int,left_idx,right_idx)
     return out
 
 class staircaselayer():
-    def __init__(self,data = jnp.eye(4,4)):
+    def __init__(self,data = np.random.rand(4,4)):
         self.data = data.reshape(2,2,2,2)
+        self.data /= np.sum(self.data**2)
     def __call__(self,input_idx, output_idx,Nlink, min_layer_number,dtype=jnp.float64) -> qtn.TensorNetwork:
         out = qtn.TensorNetwork([])
         i = 0

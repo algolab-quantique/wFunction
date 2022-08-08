@@ -18,6 +18,7 @@ class stacklayer:
     def __init__(self,stack_ctrl = -1,data_gen = jnp.eye(4,4)):
         self.stack_control = -1
         self.data_gen = data_gen.reshape(2,2,2,2)
+        self.data_gen /= np.sum(self.data_gen**2)
         
 
     def stackLayer(self,input_idx, output_idx,Nlink, min_layer_number,dtype=jnp.float64):
@@ -89,34 +90,19 @@ def TwoqbitsLayers(mpo:qtn.MatrixProductOperator,Nlayer:int,dtype=jnp.float64,la
 
 import quimb
 
-def projection_infidelity(Onet:qtn.TensorNetwork,mpo:qtn.MatrixProductOperator,id_net:qtn.MatrixProductOperator):
-    """completly sidestep the representation problem of sqrt(1-f) and the extensive trace of the unitary operator by projecting the uniatry such that it extract f.
-    sqrt(1-f) will appear in the part unconstrained by this cost function by enforcing unitarity.
-    The trace of the square MPO should be equal to 1."""
+def projection_infidelity(Onet:qtn.TensorNetwork,mpo:qtn.MatrixProductOperator,N_fact:float):
+    """Sidesteps the representation problem of sqrt(1-f) by projecting the unitary such that it extract f.
+    sqrt(1-f) naturally will appear in the part unconstrained by this cost function by enforcing unitarity.
+    The trace of the square MPO must be 1 and the target norm is N_fact^nqbit for the loss function to coincide with an infidelity measure. In any case, it must be of low magnitude <3."""
     n = mpo.L
     ketzero = qtn.Tensor(data = [1,0],inds=(mpo.lower_ind_id.format(n),) )
     brazero = qtn.Tensor(data = [1,0],inds=(mpo.upper_ind_id.format(n),) )
-    ketone = qtn.Tensor(data = [0,1],inds=(mpo.lower_ind_id.format(n),) )
-    braone = qtn.Tensor(data = [0,1],inds=(mpo.upper_ind_id.format(n),) )
-    Pzero = (Onet|brazero)@ketzero
-    Pone = (Onet|braone)@ketone
-    Gzero = (Onet|braone)@ketzero
-    Gone = (Onet|brazero)@ketone
-    uuid = qtn.rand_uuid() + "{}"
-    bot_id = {mpo.lower_ind_id.format(i):uuid.format(i) for i in range(n)}
-    up_id = {mpo.upper_ind_id.format(i):uuid.format(i) for i in range(n)}
-    Gz2 = Gzero.reindex(bot_id)|Gzero.reindex(up_id)
-    Go2 = Gone.reindex(bot_id)|Gone.reindex(up_id)
-    FF2 = (id_net + mpo).apply(id_net - mpo)
-    G2 = Gz2@Gz2.H + Go2@Go2.H
-    H2 = FF2@FF2.H
-    GH = Gz2@FF2 + Go2@FF2
-    F2 = mpo@mpo.H
-    pzf = mpo.H@Pzero
-    pof = mpo.H@Pone
-    po2 = Pone@Pone.H
-    pz2 = Pzero@Pzero.H
-    return jnp.real( 2*F2 + po2 + pz2 - 2*pzf - 2*pof + G2 + H2 -2*GH)
+    Net = Onet.copy()
+    for t in Net.tensors[0:n]:
+        t/=N_fact
+    Pzero = (Net|brazero)@ketzero
+    # Pnorm = Pzero@Pzero.H
+    return jnp.real( Pzero.H@Pzero - Pzero.H@mpo )
 
 def Infidelity(Onet,mpo:qtn.MatrixProductOperator,id_net:qtn.MatrixProductOperator):
     # id_net.upper_ind_id = mpo.upper_ind_id
@@ -136,8 +122,8 @@ def Infidelity(Onet,mpo:qtn.MatrixProductOperator,id_net:qtn.MatrixProductOperat
     E = 1-2*jnp.real(O)+OOdag
     return E
 
-def projection_loss(circuit,mpo,L,id,C,m,id_net):
-    return (projection_infidelity(circuit,mpo,id_net) + unitarity_cost2(circuit,L,id))*(1 + gauge_regularizer(circuit,id,C,m))
+def projection_loss(circuit,mpo,L,id,C,m):
+    return (projection_infidelity(circuit,mpo) + unitarity_cost2(circuit,L,id))*(1 + gauge_regularizer(circuit,id,C,m))
 
 def full_loss(circuit,mpo,L,id,C,m,id_net):
     return (Infidelity(circuit,mpo,id_net) + unitarity_cost2(circuit,L,id))*(1 + gauge_regularizer(circuit,id,C,m))
@@ -149,8 +135,18 @@ def gen_id_net(mpo:qtn.MatrixProductOperator,factor=1):
     dat[-1] = dat[0]
     return qtn.MatrixProductOperator(dat,upper_ind_id=mpo.upper_ind_id,lower_ind_id=mpo.lower_ind_id)
 
+def stairase2MPO(layer:qtn.TensorNetwork):
+    """convert a staircase layer to a MPO."""
+    pass
+
+
+
 def Proj_MPSO2Gates(mpo:qtn.MatrixProductOperator,precision,Nlayer,max_count=40):
+    """Assume the mpo orthogonality center is tensor 0."""
     mpo = mpo.copy()
+    N_fact = np.sqrt(mpo[0]@mpo[0].H)
+    for T in mpo.tensors: 
+        T /= N_fact
     I = np.array([[1.,0.],[0.,1.]])
     O_gen_mpo = qtn.MatrixProductOperator([ *[x.data for x in mpo.tensors[:-1]],pad_reshape(mpo.tensors[-1].data),I.reshape(1,*I.shape) ],site_tag_id=mpo.site_tag_id,upper_ind_id=mpo.upper_ind_id,lower_ind_id=mpo.lower_ind_id)
     O = TwoqbitsLayers(O_gen_mpo,Nlayer,dtype=jnp.complex128)
@@ -158,15 +154,14 @@ def Proj_MPSO2Gates(mpo:qtn.MatrixProductOperator,precision,Nlayer,max_count=40)
     # print("O",O)
     # print("X",qX)
     # print("ts",ts)
-    id_net = gen_id_net(mpo)
-    print(projection_infidelity(O,mpo,id_net))
+    print(projection_loss(O,mpo,N_fact))
     id = qtn.Tensor(data = jnp.eye(4,4).reshape(2,2,2,2), inds=('a','b','c','d'))
     optmzr = TNOptimizer(
         O,
         loss_fn = projection_loss,
         # norm_fn=normalize_gates,
         loss_kwargs = {'C':0.,'m':50},
-        loss_constants={'mpo': mpo, 'id_net':id_net,'id':id,'L':L},  # this is a constant TN to supply to loss_fn: psi,trivial_state, id, C,m)
+        loss_constants={'mpo': mpo,'N_fact':N_fact,'id':id,'L':L},  # this is a constant TN to supply to loss_fn: psi,trivial_state, id, C,m)
         autodiff_backend='jax',      # {'jax', 'tensorflow', 'autograd','torch'}
         optimizer='L-BFGS-B',
         loss_target=precision
@@ -186,18 +181,22 @@ def Proj_MPSO2Gates(mpo:qtn.MatrixProductOperator,precision,Nlayer,max_count=40)
         # else:
         OL_opt = optmzr.optimize(20000,tol=precision)   
         # OL_opt = normalize_gates(TN(OL_opt['O']))#&normalize_gates(TN(OL_opt['L']))
-        error = projection_infidelity(OL_opt,mpo,id_net)
+        error = projection_loss(OL_opt,mpo,N_fact)
         # print("count: ", count)
         print("current error: ", error, " unitarity error: ", unitarity_cost2(OL_opt,L,id))
         count += 1 
     O = normalize_gates(OL_opt)
     return O,error
 
-def MPSO2Gates(mpo:qtn.MatrixProductOperator,precision,Nlayer,max_count=10,layer = layer_compose(stacklayer(-1),generate_staircase_operators)):
+#Doing precisely what i describe in the article will require different definition of loss function and "MPO2Gates"
+
+#Ne scale pas suffisament bien pour être très pratique.
+#Il faut optimiser une couche à la fois, composer le résultat à haute précision avec le MPO cible (devrait réduire l'enchevetrement) et calculer la nouvelle couche avec le nouveau MPO ainsi créé.
+def MPSO2Gates(mpo:qtn.MatrixProductOperator,precision,Nlayer,max_count=10,layer = generate_staircase_operators):
     nmpo = mpo.copy()
     sqrthalf = np.sqrt(0.5)
-    for i,m in enumerate(mpo):
-        nmpo[i] = m*0.5
+    for i,_ in enumerate(mpo):
+        nmpo[i] = nmpo[i]*0.5
     mpo = nmpo
     O = TwoqbitsLayers(mpo,Nlayer,layerGenerator=layer)
     L = generate_Lagrange_multipliers(O)

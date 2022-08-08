@@ -52,6 +52,7 @@ def guess_tensor_norm(target_norms,norm2,oc,direction):
 
 
 def sum_sweep(MPOs:List[qtn.MatrixProductOperator],target:qtn.MatrixProductOperator,envs,direction,tol,oc,target_norms,max_bond):
+
     Env = Env_holder(envs)
     starting_oc = oc
     target.calc_current_orthog_center
@@ -129,7 +130,8 @@ def MPO_compressing_sum(MPOs:List[qtn.MatrixProductOperator],tol:float,crit:floa
     for mpsi in MPOs[1:]:
         assert(mpsi.L == N)
         c = 0
-        for x in mpsi:
+        while c < N :
+            x = mpsi[c]
             sup = x.ind_size(mpsi.upper_ind_id.format(c))
             sdn = x.ind_size(mpsi.lower_ind_id.format(c))
             assert(sup == tens_arr[c].shape[-2])
@@ -139,11 +141,7 @@ def MPO_compressing_sum(MPOs:List[qtn.MatrixProductOperator],tol:float,crit:floa
         mpsi.lower_ind_id = mpo0.lower_ind_id
         mpsi_n += 1
     out = qtn.MatrixProductOperator(tens_arr,shape='lrud',upper_ind_id=mpo0.upper_ind_id, lower_ind_id=mpo0.lower_ind_id,site_tag_id='out{}')
-    oc = out.calc_current_orthog_center()
-    if oc[0] == oc[1]:
-        oc = oc[0]
-    else:
-        oc = out.L-1
+    oc = 0 
     norms = [x@x.H for x in out]
     tgt_norm = np.mean(norms)
     envs = [mpompo_env_prep(out,m,tgt_norm,oc) for m in MPOs]

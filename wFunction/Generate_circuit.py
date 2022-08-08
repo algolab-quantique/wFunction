@@ -123,7 +123,7 @@ def Generate_g_circuit(f,MPO_precision,Gate_precision,nqbit,domain,register,Nlay
     dtrans = lambda x :( (b-a) * x + b+a)/2
     ff = lambda x: f(dtrans(x))
     MPO_func = controled_MPO(ff,nqbit,MPO_precision,endian) 
-    gates,error = mqg.Proj_MPSO2Gates(MPO_func,Gate_precision,Nlayer)
+    gates,error = mqg.MPSO2Gates(MPO_func,Gate_precision,Nlayer)
     circuit = net2circuit(gates,nqbit,register,name)
     return circuit
 
