@@ -88,19 +88,19 @@ def generate_losange_operators(link:int,midlink:int,n_op:int,left_idx,right_idx)
     return out
 
 class staircaselayer():
-    def __init__(self,data = np.random.rand(4,4)):
+    def __init__(self,data = np.random.rand(4,4),uuid = qtn.rand_uuid() + '{}'):
         self.data = data.reshape(2,2,2,2)
         self.data /= np.sum(self.data**2)
-    def __call__(self,input_idx, output_idx,Nlink, min_layer_number,dtype=jnp.float64) -> qtn.TensorNetwork:
+        self.uuid = uuid
+    def __call__(self,input_idx, output_idx,Nlink, min_layer_number=0,dtype=jnp.float64) -> qtn.TensorNetwork:
         out = qtn.TensorNetwork([])
         i = 0
-        uuid = qtn.rand_uuid()+"{}"
         if Nlink > 1:
-            out &= qtn.Tensor(data =jnp.copy(self.data), inds = [input_idx.format(i),input_idx.format(i+1),output_idx.format(i),uuid.format(i+1)],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
+            out &= qtn.Tensor(data =jnp.copy(self.data), inds = [input_idx.format(i),input_idx.format(i+1),output_idx.format(i),self.uuid.format(i+1)],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
             for i in range(1,Nlink-1):
-                out &= qtn.Tensor(data =jnp.copy(self.data), inds = [uuid.format(i),input_idx.format(i+1),output_idx.format(i),uuid.format(i+1)],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
+                out &= qtn.Tensor(data =jnp.copy(self.data), inds = [self.uuid.format(i),input_idx.format(i+1),output_idx.format(i),self.uuid.format(i+1)],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
             i = Nlink-1
-            out &= qtn.Tensor(data =jnp.copy(self.data), inds = [uuid.format(i),input_idx.format(i+1),output_idx.format(i),output_idx.format(i+1)],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
+            out &= qtn.Tensor(data =jnp.copy(self.data), inds = [self.uuid.format(i),input_idx.format(i+1),output_idx.format(i),output_idx.format(i+1)],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
         else:
             out &= qtn.Tensor(data =jnp.copy(self.data), inds = [input_idx.format(i),input_idx.format(i+1),output_idx.format(i),output_idx.format(i+1)],tags=['O','L{}'.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
         return out

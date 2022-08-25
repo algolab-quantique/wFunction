@@ -102,7 +102,7 @@ def func2MPO(fun,nqbit:int,tol:float):
 
 def Cheb2MPO(fun:Chebyshev,nqbit:int, tol:float):
     order = len(fun.coef)-1
-    MPO_poly = Chebyshevs(order,nqbit,tol)
+    MPO_poly = Chebyshevs(order,nqbits=nqbit,tol=tol)
     polysum = [coef*poly for poly,coef in zip(MPO_poly,fun)]
     mpo =  MPO_compressing_sum(polysum,tol,4*tol)
     s2 = 1/np.sqrt(2)

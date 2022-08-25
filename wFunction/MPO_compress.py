@@ -50,12 +50,64 @@ def guess_tensor_norm(target_norms,norm2,oc,direction):
     norm = np.sqrt(target_norm_root)
     return norm
 
+def compute_oc(MPO:qtn.MatrixProductOperator) -> tuple[int,int]:
+    tmp_id = qtn.rand_uuid()
+    forward = True
+    center = [0,0]
+    for i,_ in enumerate(MPO):
+        #il faut tout contracter sauf le lien.
+        t = MPO[i]
+        if forward and i == MPO.L-1:
+            center = [i,i]
+            break
+        if forward:
+            bond_name = MPO.bond(i,i+1)
+            center[0] = i
+        else:
+            bond_name = MPO.bond(i-1,i)
+        tp = qtn.Tensor(t.H)
+        tp.reindex_({bond_name:tmp_id})
+        X = (t|tp).contract(preserve_tensor=True)
+        is_center = not np.allclose(X.data/X.data.flatten()[0] , np.eye(X.data.shape[0]),rtol=1.e-12)
+        if is_center:
+            forward = False
+            center[1] = i
+    return tuple(center)
+        
+
+def move_oc(MPO:qtn.MatrixProductOperator, dest:int ):
+    if dest < 0:
+        dest = MPO.L+dest
+    assert(dest < MPO.L)
+    assert (dest >= 0)
+    oc = [*compute_oc(MPO)]
+    while oc[0] < dest:
+        t = MPO[oc[0]]
+        bond = MPO.bond(oc[0],oc[0]+1)
+        u,d,v = t.split(left_inds=None,right_inds=[bond],absorb=None)
+        dd = np.sqrt(d@d)
+        d /= dd
+        dv = (d|v).contract(output_inds=v.inds)
+        dv.drop_tags(dv.tags)
+        MPO[oc[0]] = u*dd
+        MPO[oc[0]+1] = MPO[oc[0]+1]@dv
+        oc[0] += 1
+    while oc[1] > dest:
+        t = MPO[oc[1]]
+        bond = MPO.bond(oc[1]-1,oc[1])
+        u,d,v = t.split(left_inds=[bond],absorb=None)
+        dd = np.sqrt(d@d)
+        d /= dd
+        du = (d|u).contract(output_inds=u.inds)
+        du.drop_tags(du.tags)
+        MPO[oc[1]-1] = MPO[oc[1]-1]@du
+        MPO[oc[1]] = v*dd
+        oc[1] -= 1
 
 def sum_sweep(MPOs:List[qtn.MatrixProductOperator],target:qtn.MatrixProductOperator,envs,direction,tol,oc,target_norms,max_bond):
 
     Env = Env_holder(envs)
     starting_oc = oc
-    target.calc_current_orthog_center
     L = target.L
     direction = 1
     if oc == L-1:
@@ -104,6 +156,40 @@ def sum_sweep(MPOs:List[qtn.MatrixProductOperator],target:qtn.MatrixProductOpera
     out = (target[oc]@target[oc].H)
     return out
 
+def Embed_in_unitaryMPO(MPO:qtn.MatrixProductOperator,tol:float,crit:float,max_bond=None):
+    inL = MPO.L
+    outL = inL+1
+    P = qtn.Tensor(data = [[1,0],[0,0]],inds = (MPO.lower_ind_id.format(inL),MPO.upper_ind_id.format(inL)),tags=[MPO.site_tag_id.format(inL)])
+    Out = qtn.MPO_rand(outL,4,2,dtype = MPO.dtype)
+    norms = [x@x.H for x in Out]
+    tgt_norm = np.mean(norms)
+    # The next tree line accomplish this: MPOp = qtn.MatrixProductOperator(MPO|P)
+    # wut keep the result in a MPO
+    Nm1shape = MPO[-1].data.shape
+    Nm1shape = (Nm1shape[0],1,*Nm1shape[1:])
+    MPOp = qtn.MatrixProductOperator([ *[MPO[i].data for i,t in enumerate(MPO.tensors[0:-1])], MPO[-1].data.reshape(Nm1shape), P.data.reshape(1,*P.data.shape) ],lower_ind_id=MPO.lower_ind_id,upper_ind_id=MPO.upper_ind_id,site_tag_id=MPO.site_tag_id)
+    MPOenv = mpompo_env_prep(Out,MPOp,tgt_norm,0)
+    Pout = (Out|P).contract(P.tags)
+    OOenv = mpompo_env_prep(Pout,Pout,tgt_norm,0) #No env contrib for the ancilla qbit.
+    cost = 1.0e18
+    new_cost = 0
+    direction = 1
+    iter_count = 0
+    oc = 0
+    while True:
+        new_cost = Embed_sweep(MPOp,Out,OOenv,MPOenv,direction,tol,oc,norms,max_bond=max_bond)
+        if abs(2*(new_cost-cost)/(new_cost+cost)) < crit:
+            break
+        cost = new_cost
+        iter_count += 1
+        if (iter_count > 1000):
+            print("Compressing sum failed to converge")
+            break
+    print("iterations: ", iter_count)
+    return Out
+
+def Embed_sweep(MPOp,Out,OOenv,MPOEnv,direction,tol,oc,norms,max_bond):
+    pass
 
 def mpompo_env_prep(mpoA,mpoB,target_norm,oc):
     L = mpoA.L
@@ -118,6 +204,8 @@ def mpompo_env_prep(mpoA,mpoB,target_norm,oc):
     outright.reverse()
     return outleft+[qtn.Tensor()]+outright
 
+def MPO_compressor(MPO:qtn.MatrixProductOperator,tol:float,crit:float,max_bond=None):
+    return MPO_compressing_sum([MPO],tol,crit,max_bond)
 
 def MPO_compressing_sum(MPOs:List[qtn.MatrixProductOperator],tol:float,crit:float, max_bond=None):
     #check free indices are compatible across all input MPS
@@ -141,7 +229,11 @@ def MPO_compressing_sum(MPOs:List[qtn.MatrixProductOperator],tol:float,crit:floa
         mpsi.lower_ind_id = mpo0.lower_ind_id
         mpsi_n += 1
     out = qtn.MatrixProductOperator(tens_arr,shape='lrud',upper_ind_id=mpo0.upper_ind_id, lower_ind_id=mpo0.lower_ind_id,site_tag_id='out{}')
-    oc = 0 
+    oc = compute_oc(MPOs[0])
+    if oc[0] == oc[1]:
+        oc = oc[0]
+    else:
+        oc = 0
     norms = [x@x.H for x in out]
     tgt_norm = np.mean(norms)
     envs = [mpompo_env_prep(out,m,tgt_norm,oc) for m in MPOs]
