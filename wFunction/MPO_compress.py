@@ -211,7 +211,7 @@ def MPO_compressing_sum(MPOs:List[qtn.MatrixProductOperator],tol:float,crit:floa
     #check free indices are compatible across all input MPS
     mpo0 = MPOs[0]
     N = mpo0.L
-    tens_arr = [np.random.rand(4,4,x.ind_size(mpo0.upper_ind_id.format(c)),x.ind_size(mpo0.lower_ind_id.format(c))) for c,x in enumerate(mpo0)]
+    tens_arr = [np.random.rand(4,4,mpo0[c].ind_size(mpo0.upper_ind_id.format(c)),mpo0[c].ind_size(mpo0.lower_ind_id.format(c))) for c,x in enumerate(mpo0)]
     tens_arr[0] = tens_arr[0][0,:,:,:]
     tens_arr[-1] = tens_arr[-1][:,0,:,:]
     mpsi_n = 0

@@ -44,30 +44,22 @@ lg_stl = mqg.layer_compose(lg,stl)
 # gates,error = mqg.MPSO2Gates(cMPO,precision,1,layer=lg)
 # gates, error = mqg.Proj_MPSO2Gates(MPO,precision,10,layer = lg)
 # iter_gate,mpo = mqg.Iterative_MPOembedGates(MPO,precision,maxlayers=10)
-# print(circuit)
-# #%% for non iterative method
-# cgates = gates.contract()[]
-# cgt = cgates.transpose(*['k{}'.format(i) for i in range(nqbit+1)],*['b{}'.format(i) for i in range(nqbit+1)])
-# cmt = cMPO.contract().transpose_like(cgt)
-# plt.semilogy(np.abs(cgt.data.flatten() - cmt.data.flatten()))
-# plt.show()
-# plt.plot(np.diagonal(cmt.data.reshape(2**(nqbit+1),2**(nqbit+1))))
-# plt.plot(np.diagonal(cgt.data.reshape(2**(nqbit+1),2**(nqbit+1))))
-# plt.plot(np.diagonal(cmt.data.reshape(2**(nqbit+1),2**(nqbit+1)),offset=1))
-# plt.plot(np.diagonal(cgt.data.reshape(2**(nqbit+1),2**(nqbit+1)),offset=1))
-# plt.show()
-# #%% for iterative method
-# projector = qtn.Tensor([[1,0],[0,0]], inds=['b{}'.format(nqbit),'k{}'.format(nqbit)])
-# cgates = (iter_gate|projector).contract()
-# cgt = cgates.transpose(*['k{}'.format(i) for i in range(nqbit)],*['b{}'.format(i) for i in range(nqbit)])
-# cmt = MPO.contract().transpose_like(cgt)
-# plt.semilogy(np.abs(cgt.data.flatten() - cmt.data.flatten()))
-# plt.show()
-# plt.plot(np.diagonal(cmt.data.reshape(2**(nqbit),2**(nqbit))))
-# plt.plot(np.diagonal(cgt.data.reshape(2**(nqbit),2**(nqbit))))
-# plt.plot(np.diagonal(cmt.data.reshape(2**(nqbit),2**(nqbit)),offset=1))
-# plt.plot(np.diagonal(cgt.data.reshape(2**(nqbit),2**(nqbit)),offset=1))
-# plt.show()
+layercount = 0
+mpo = MPO.copy()
+uid = qtn.rand_uuid() + '{}'
+layer_link_id = qtn.rand_uuid() + '{}'
+accuhigh = uid.format(layercount)+'h{}'
+acculow = uid.format(layercount)+'l{}'
+accumulator = mqg.generate_id_MPO(accuhigh ,acculow,mpo.L+1,1)
+circuit = qtn.TensorNetwork([])
+layer_gen = staircaselayer(uuid=layer_link_id,data = np.eye(4,4))
+accumulator = mqg.generate_id_MPO(accuhigh ,acculow,mpo.L+1,1)
+layer_gen = staircaselayer(uuid=layer_link_id,data = np.eye(4,4))
+left_layer = layer_gen(acculow,mpo.upper_ind_id,mpo.L,0)
+right_layer = layer_gen(accuhigh,mpo.lower_ind_id,mpo.L,0)
+X = left_layer|accumulator|right_layer
+# X.draw()
+
 #%%
 #%%
 # from wFunction.mps2qbitsgates import generate_staircase_operators
@@ -81,18 +73,16 @@ lg_stl = mqg.layer_compose(lg,stl)
 # register = qs.QuantumRegister(nqbit+1)
 # circuit = Generate_g_circuit(f,1E-8,1e-8,nqbit+1,(-1,1),register,12)
 # #%%
-# circuit.draw("mpl")
-
-# %%
-uid = qtn.rand_uuid() + '{}'
-layer_link_id = qtn.rand_uuid() + '{}'
-intind = uid.format(0)+'{}'
-accumulator = mqg.generate_swap_MPO(intind,MPO.lower_ind_id,MPO.L+1)#is that right?
 stl.data = np.eye(4).reshape(2,2,2,2)
-layer0 = stl( intind,MPO.upper_ind_id,MPO.L, 0)
-layer = mqg.layer_SVD_optimizer(layer0,accumulator,MPO,'L{}',10,1e-4)
-projector = qtn.Tensor([[1,0],[0,0]], inds=[MPO.lower_ind_id.format(nqbit),MPO.upper_ind_id.format(nqbit)])
-cgates = (accumulator|layer|projector).contract()
+vlayer = mqg.V_layer(stl.data)
+intind = uid.format(0)+'{}'
+accumulator = mqg.generate_id_MPO(intind,MPO.lower_ind_id,MPO.L+1)#is that right?
+layer0 = vlayer(intind,MPO.upper_ind_id,MPO.L)
+(layer0|accumulator).draw()
+# circuit.draw("mpl")
+circuit, mpoop = mqg.Iterative_MPOembedGatesA(MPO,1e-6,1)
+proj = qtn.Tensor(data = [[1,0],[0,0]],inds = ('k{}'.format(nqbit),'b{}'.format(nqbit)))
+cgates = (circuit|proj).contract()
 cgt = cgates.transpose(*[MPO.lower_ind_id.format(i) for i in range(nqbit)],*[MPO.upper_ind_id.format(i) for i in range(nqbit)])
 cmt = MPO.contract().transpose_like(cgt)
 plt.semilogy(np.abs(cgt.data.flatten() - cmt.data.flatten()))
@@ -105,3 +95,36 @@ plt.plot(np.diagonal(cgt.data.reshape(2**(nqbit),2**(nqbit))),label="gates on d"
 # print(cgt.data.reshape(2**nqbit,2**nqbit))
 plt.legend()
 plt.show()
+# %%
+# uid = qtn.rand_uuid() + '{}'
+# layer_link_id = qtn.rand_uuid() + '{}'
+# intind = uid.format(0)+'{}'
+# accumulator = mqg.generate_id_MPO(intind,MPO.lower_ind_id,MPO.L+1)#is that right?
+# # accumulator = mqg.generate_swap_MPO(intind,MPO.lower_ind_id,MPO.L+1)#is that right?
+# stl.data = np.eye(4).reshape(2,2,2,2)
+# vlayer = mqg.V_layer(stl.data)
+# # layer0 = stl( intind,MPO.upper_ind_id,MPO.L, 0)
+# layer0 = vlayer( intind,MPO.upper_ind_id,MPO.L)
+# # print(layer0)
+# # layer0.draw(iterations=100, initial_layout='spiral')
+# layer = mqg.layer_SVD_optimizer(layer0,accumulator,MPO,'L{}',10,1e-4)
+# projector = qtn.Tensor([[1,0],[0,0]], inds=[MPO.lower_ind_id.format(nqbit),MPO.upper_ind_id.format(nqbit)])
+# cgates = (accumulator|layer|projector).contract()
+# cgt = cgates.transpose(*[MPO.lower_ind_id.format(i) for i in range(nqbit)],*[MPO.upper_ind_id.format(i) for i in range(nqbit)])
+# cmt = MPO.contract().transpose_like(cgt)
+# plt.semilogy(np.abs(cgt.data.flatten() - cmt.data.flatten()))
+# plt.show()
+# print(np.diagonal(cgt.data.reshape(2**(nqbit),2**(nqbit))))
+# plt.plot(np.diagonal(cmt.data.reshape(2**(nqbit),2**(nqbit))))
+# plt.plot(np.diagonal(cmt.data.reshape(2**(nqbit),2**(nqbit)),offset=1))
+# plt.plot(np.diagonal(cgt.data.reshape(2**(nqbit),2**(nqbit)),offset=1),label = "gates")
+# plt.plot(np.diagonal(cgt.data.reshape(2**(nqbit),2**(nqbit))),label="gates on d")
+# # print(cgt.data.reshape(2**nqbit,2**nqbit))
+# plt.legend()
+# plt.show()
+#%%
+
+
+    
+
+

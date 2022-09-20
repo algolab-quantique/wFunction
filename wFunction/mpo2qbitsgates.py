@@ -1,5 +1,3 @@
-from argparse import ArgumentError
-from typing import Callable
 from jax.config import config
 config.update("jax_enable_x64", True)
 
@@ -14,7 +12,6 @@ from .mps2qbitsgates import generate_staircase_operators,unitarity_cost2,gauge_r
 from .Chebyshev import pad_reshape
 from .MPO_compress import MPO_compressor
 from multimethod import multimethod,overload
-
 qtn.MatrixProductState
 TN = qtn.TensorNetwork
 
@@ -32,16 +29,17 @@ class V_layer():
         i = Nlink-1
         LR = i
         if Nlink > 1:
-            out &= qtn.Tensor(data =jnp.copy(self.data), inds = [Linner.format(i),input_idx.format(i+1),Rinner.format(i),output_idx.format(i+1)],tags=['L{}'.format(i),"ML{}".format(i)])
+            out &= qtn.Tensor(data =jnp.copy(self.data), inds = [Linner.format(i),input_idx.format(i+1),Rinner.format(i),output_idx.format(i+1)],tags=['L{}'.format(i),"ML{}".format(i),'ML'])
             for i in range(Nlink-2,0,-1):
                 LR += 1
-                out &= qtn.Tensor(data =jnp.copy(self.data), inds = [Linner.format(i),input_idx.format(i+1),Xinner.format(i),Linner.format(i+1)],tags=['L{}'.format(i),"ML{}".format(i)])
-                out &= qtn.Tensor(data =jnp.copy(self.data), inds = [Xinner.format(i),Rinner.format(i+1),output_idx.format(i+1),Rinner.format(i)],tags=['L{}'.format(LR),"MR{}".format(i)])
+                out &= qtn.Tensor(data =jnp.copy(self.data), inds = [Linner.format(i),input_idx.format(i+1),Xinner.format(i),Linner.format(i+1)],tags=['L{}'.format(i),"ML{}".format(i),'ML'])
+                out &= qtn.Tensor(data =jnp.copy(self.data), inds = [Xinner.format(i),Rinner.format(i+1),output_idx.format(i+1),Rinner.format(i)],tags=['L{}'.format(LR),"MR{}".format(i),'MR'])
             i = 0
-            out &= qtn.Tensor(data =jnp.copy(self.data), inds = [input_idx.format(i),input_idx.format(i+1),Xinner.format(i),Linner.format(i+1)],tags=['L{}'.format(i),"ML{}".format(i)])
-            out &= qtn.Tensor(data =jnp.copy(self.data), inds = [Xinner.format(i),Rinner.format(i+1),output_idx.format(i+1),output_idx.format(i)],tags=['L{}'.format(LR),"MR{}".format(i)])
+            LR+=1
+            out &= qtn.Tensor(data =jnp.copy(self.data), inds = [input_idx.format(i),input_idx.format(i+1),Xinner.format(i),Linner.format(i+1)],tags=['L{}'.format(i),"ML{}".format(i),'ML'])
+            out &= qtn.Tensor(data =jnp.copy(self.data), inds = [Xinner.format(i),Rinner.format(i+1),output_idx.format(i+1),output_idx.format(i)],tags=['L{}'.format(LR),"MR{}".format(i),'MR'])
         else:
-            out &= qtn.Tensor(data =jnp.copy(self.data), inds = [input_idx.format(i),input_idx.format(i+1),output_idx.format(i),output_idx.format(i+1)],tags=['L{}'.format(i),"ML".format(i)])
+            out &= qtn.Tensor(data =jnp.copy(self.data), inds = [input_idx.format(i),input_idx.format(i+1),output_idx.format(i),output_idx.format(i+1)],tags=['L{}'.format(i),"ML{}".format(i)])
         return out
 
 def Vlayer2MPO(layer:qtn.TensorNetwork,input_idx:str,output_idx:str):
@@ -217,7 +215,7 @@ def staircase2MPO(layer:qtn.TensorNetwork,input_idx:str,output_idx:str,bond_idx:
         inds = [Out_tens[-1].inds[0],Out_tens[-1].inds[-1],*Out_tens[-1].inds[1:-1]]
         Out_tens[-1].transpose_(*inds)
         Out_tens.append(tr)
-    return qtn.MatrixProductOperator([t.data for t in Out_tens],shape = 'lrdu',upper_ind_id=output_idx,lower_ind_id=input_idx)    
+    return qtn.MatrixProductOperator([t.data for t in Out_tens],shape = 'lrdu',upper_ind_id=output_idx,lower_ind_id=input_idx)   #À vérifier. 
 
 
 def iterative_projection_infidelity(new_layer:qtn.TensorNetwork,MPO_accumulator:qtn.MatrixProductOperator,target_mpo:qtn.MatrixProductOperator):
@@ -285,7 +283,7 @@ def layer_SVD_extractBx(layer,accu,id,currpos,tmp_id):
     Bp = (layer|accu|id)
     Breinds = set(layer[currpos].inds).difference(Bp.outer_inds())
     Breinds = { t:tmp_id.format(i) for i,t in enumerate(Breinds)}
-    assert(len(Breinds) == 3)
+    # assert(len(Breinds) == 3)
     BpH = Bp.H.reindex(Breinds)
     curtag = BpH[currpos].tags
     BpH[currpos].add_tag("around_this")
@@ -294,7 +292,7 @@ def layer_SVD_extractBx(layer,accu,id,currpos,tmp_id):
     BLtags = set(B.tags).difference(set(layer[currpos].tags).union(["around_this"]))
     B = B.contract(BLtags) #contract all tensor but the one with "around_this" tag
     Bc = B.contract()
-    assert(len(B.tensors) == 3)
+    # assert(len(B.tensors) == 3)
     B = B[BLtags]
 
     return B,layer[currpos],Breinds,Bc
@@ -341,7 +339,8 @@ def layer_SVD_optimizer(layer:qtn.TensorNetwork,accu:qtn.MatrixProductOperator,m
             Bone,l,Breinds,Bc = layer_SVD_extractBx(layer,accu,idone,curr_A,tmp_id)
             Hzero,Tc = layer_SVD_extractH(layer,accu,mpo,idzero,curr_A)
             Hone,Tc = layer_SVD_extractH(layer,accu,mpo,idone,curr_A)
-            print("current error :", Bc+2*np.real(Tc) + np.real(N))
+            currerr = np.real(Bc-2*Tc+N)
+            print("current error :", currerr)
             Hzero.reindex_(Breinds)
             Hone.reindex_(Breinds)
             if pos == 0:
@@ -350,10 +349,12 @@ def layer_SVD_optimizer(layer:qtn.TensorNetwork,accu:qtn.MatrixProductOperator,m
                 oli = set(layer[curr_A].inds).intersection(layer[Ltags[pos-1]].inds).union(set(layer[curr_A].inds).intersection(accu[pos+1].inds))
             iri = [ Breinds[i] if i in Breinds else i for i in oli ]
             #hypothesis, first two indices are input, last two are output. Or vice versa
-            upd = biupd(Bzero,Hzero,Bone,Hone,layer[curr_A],oli,iri)
-            # upd,d = layer_upd(B,H,layer[curr_A],oli,iri)
+            upd = biupd(Bzero,Hzero,Bone,Hone,layer[curr_A],oli,iri,N)
+            updd = upd.reindex(Breinds).H
+            newerr = np.real((Bzero|upd|updd).contract()  + 2*updd@Hzero + N )
             retag(upd,layer[curr_A].tags)
             layer[curr_A] = upd
+            # upd,d = layer_upd(B,H,layer[curr_A],oli,iri)
             pos += direction
         ##
         direction *= -1
@@ -362,7 +363,7 @@ def layer_SVD_optimizer(layer:qtn.TensorNetwork,accu:qtn.MatrixProductOperator,m
         # print(iterative_projection_infidelity(normalize_gates(T.select_any(layertags)),accu,mpo))
     return layer.select_any(layertags)
 
-def biupd(Bzero:qtn.Tensor,Hzero:qtn.Tensor,Bone:qtn.Tensor,Hone:qtn.Tensor,l:qtn.Tensor,oli:list[str],iri:list[str]):
+def biupd(Bzero:qtn.Tensor,Hzero:qtn.Tensor,Bone:qtn.Tensor,Hone:qtn.Tensor,l:qtn.Tensor,oli:list[str],iri:list[str],tnorm:float=0) -> qtn.Tensor:
     tmp_inds = set(Hzero.inds).intersection(Bzero.inds)
     Ub0,sb0,Vb0 = Bzero.split(None,right_inds = tmp_inds,absorb = None, cutoff = 1e-13)
     Ub1,sb1,Vb1 = Bone.split(None,right_inds = tmp_inds,absorb = None, cutoff = 1e-13)
@@ -371,28 +372,17 @@ def biupd(Bzero:qtn.Tensor,Hzero:qtn.Tensor,Bone:qtn.Tensor,Hone:qtn.Tensor,l:qt
     sb1m = 1/sb1
     A0 = (Ub0.H|sb0m|Vb0.H|Hzero).contract(output_inds = l.inds)
     A1 = (Ub1.H|sb1m|Vb1.H|Hone).contract(output_inds = l.inds)
-    #mon hypothèse: cette prcédure identifie correctement les paire dégénéré à completé.
-    Ac = (A0+A1)*0.5
-    Ua,sa,Va = Ac.split(oli,absorb = None,cutoff = 0)
-    if sa.data[0] > 1:
-        sa /= sa.data[0]
-    print(sa.data)
-    # return Ua@Va
-    indt = qtn.rand_uuid()
-    d = np.diag(sa.data[:2])
-    d[0,1]= np.sqrt(1-d[0,0]**2)
-    d[1,0]= -1*d[0,1]
-    dt = np.diag(sa.data[2:])
-    dt[0,1]= np.sqrt(1-dt[0,0]**2)
-    dt[1,0]= -1*dt[0,1]
-    At = np.zeros((4,4))
-    At[:2,:2] = d
-    At[2:,2:] = dt
-    Ua.reindex_({sa.inds[0]:indt})
-    At = qtn.Tensor(At,inds = [indt,sa.inds[0]])
-    Uat,sat,Vat = At.split(indt,absorb = None, cutoff=0)
-    return (Ua|Uat|Vat|Va).contract()
-
+    Ac = (A0+A1)#0.5? sans importance: normlize élimine ce genre de facteur.
+    l = Ac 
+    # def cost(l0,Ac):
+    #     return l0@l0.H + Ac@Ac.H - l0@Ac.H + Ac@l0.H
+    def normalize(l0):
+        u,d,v = l0.split(oli,cutoff = 0, absorb=None)
+        return qtn.TensorNetwork( [u@v] )
+    # opt = qtn.TNOptimizer(qtn.TensorNetwork([l]),cost,normalize,{'Ac':qtn.TensorNetwork([Ac])},loss_target=0.01,progbar=False)
+    # l = opt.optimize(10)
+    return normalize(l).tensors[0]
+    
 def layer_upd(B:qtn.Tensor,H:qtn.Tensor,A0:qtn.Tensor, output_left_inds:list[str],input_right_inds:list[str]):
     """
     compute H_{a,b,c,d}B^{-1}_{e,f,g,b,c,d}
@@ -426,225 +416,93 @@ def layer_upd(B:qtn.Tensor,H:qtn.Tensor,A0:qtn.Tensor, output_left_inds:list[str
         return (Ua|At|Va).contract(),sa
     
 
-def old_layer_SVD_optimizer(layer:qtn.TensorNetwork,accu:qtn.MatrixProductOperator,mpo:qtn.MatrixProductOperator,Layer_tag_id:str,max_it:int,tgt_prec:int):
-    """The tags contained in layer must be unique: each tensor of layer is uniquely identified by it, and those tags are absent from accu and mpo.
-    Each tensor of the layer must be tagged by Layer_tag_id.format{i} where i is in range(len(later.tensors))
-    The current layer+initial MPO topology isn't able to converge to a solution.
-    Other topologies means the local problem is trickier.
-    """
-    n = mpo.L
-    layer = layer.copy()
-    id = qtn.Tensor(data = [[1,0],[0,0]],inds=(mpo.lower_ind_id.format(n),mpo.upper_ind_id.format(n),) ,tags = ["ID"])
-    ket = qtn.Tensor(data = [1,0],inds=(mpo.lower_ind_id.format(n),) ,tags = ["ket"])
-    bra = qtn.Tensor(data = [1,0],inds=(mpo.upper_ind_id.format(n),) ,tags = ["bra"])
-    Ntens = len(layer.tensors)
-    layertags = [Layer_tag_id.format(i) for i in range(Ntens)]
-    err = 1000
-    it = 0
-    direction = 1
-    pos = 0
-    tmp_id = qtn.rand_uuid() + '{}'
-    tgt_norm = mpo@mpo.H
-    Ltags = [Layer_tag_id.format(pos) for pos in range(Ntens)]
-    while it<max_it and err > tgt_prec:
-        it+=1
-        print("direction ",direction)
-        for i in range(Ntens-1):
-            T = layer|accu|mpo.H|id
-            print( "NORM: ", np.linalg.norm(((layer|accu)@id-mpo.contract()).data) )
-            Bp = (layer.select_any(Ltags[pos+1:])|accu[pos:]|id)
-            Breinds = set(Bp.outer_inds()).intersection(layer[Ltags[pos]].inds)
-            Breinds = { t:tmp_id.format(i) for i,t in enumerate(Breinds)}
-            assert(len(Breinds) == 2)
-            BpH = Bp.H.reindex(Breinds)
-            B = Bp@BpH
-            t = T.tags
-            curr_A = Ltags[pos]
-            t = t.difference(T[curr_A].tags)
-            H = T.contract(t)[t].reindex(Breinds)
-            #hypothesis, first two indices are input, last two are output. Or vice versa
-            upd,d = old_layer_upd(B,H)
-            retag(upd,T[curr_A].tags)
-            layer[curr_A] = upd
-            print(iterative_projection_infidelity(T.select_any(layertags),accu,mpo))
-            err = np.abs((tgt_norm - d.sum_reduce(d.inds[0])).data)
-            pos += direction
-        if direction == 1:
-        ## update the operator acting on the ancilla qubit
-            T = layer|accu|mpo.H
-            Bp = (accu[pos:])
-            Breinds = set(Bp.outer_inds()).intersection(layer[Ltags[pos]].inds)
-            out_inds = [*[tmp_id.format(i) for i,t in enumerate(Breinds)],*Breinds ]
-            Breinds = { t:tmp_id.format(i) for i,t in enumerate(Breinds)}
-            assert(len(Breinds) == 2)
-            BpH = Bp.H.reindex(Breinds)
-            B = (Bp|BpH|id).contract(output_inds=out_inds)#this is ok because id is diagonnal.
-            t = T.tags
-            curr_A = Ltags[pos]
-            t = t.difference(T[curr_A].tags)
-            H = T.contract(t)[t].reindex(Breinds) 
-            upd,d = old_layer_ancilla_upd(B,H,bra,ket)
-            retag(upd,T[curr_A].tags)
-            layer[curr_A] = upd
-            print(iterative_projection_infidelity(T.select_any(layertags),accu,mpo))
-            err = np.abs((tgt_norm - d.sum_reduce(d.inds[0])).data)
-        ##
-        # direction *= -1
-        # pos += direction
-        pos = 0
-        # print(iterative_projection_infidelity(T.select_any(layertags),accu,mpo))
-        # print(iterative_projection_infidelity(normalize_gates(T.select_any(layertags)),accu,mpo))
-    return T.select_any(layertags)
 
-# def compute_complement(X:qtn.Tensor,left_inds:list[str]):
-#     right_inds = set(X.inds).difference(left_inds)
-#     X = X.transpose(*left_inds,*right_inds)
-#     left_sizes = [X.ind_size(t) for t in left_inds]
-#     right_sizes = [X.ind_size(t) for t in right_inds]
-#     L,R = np.prod(left_sizes),np.prod(right_sizes)
-#     assert(L==R)
-#     Y = np.ndarray(X.data).reshape(L,L)
-#     Id = np.eye(L)
-#     Left = Id - np.conj(Y.T)@Y
-#     Right = Id - Y@np.conj(Y.T)
-#     dr,V = np.linalg.eigh(Right) #is it V, but we want Vdagger
-#     dl,U = np.linalg.eigh(Left) #is it U 
-#     Vd = np.conj(V.T)
-#     assert(np.allclose(dr,dl))
-#     d = np.sqrt(dl)
-#     ind = qtn.rand_uuid()
-#     tV = qtn.Tensor(Vd.reshape(len(d),*right_sizes),inds = [ind,*right_inds])
-#     td = qtn.Tensor(d,inds = [ind])
-#     tU = qtn.Tensor(U,[*left_inds,ind])
-#     return (tU|td|tV).contract(output_inds=X.inds)
-
-
-
-def old_layer_ancilla_upd(B,H,bra,ket):
-    tmp_inds = set(H.inds).intersection(B.inds)
-    Ub,d,Vb = B.split(left_inds = None, right_inds = tmp_inds,absorb = None,cutoff = 0)
-    #We have to chop off the last dim(bra) singular values for the computation of the upper left corner of the output unitary.
-    vbsize = Vb.ind_size(Vb.inds[0])
-    Kept_size = vbsize//bra.ind_size(bra.inds[0])
-    V = qtn.Tensor(data = Vb.data[:Kept_size,...],inds=Vb.inds)#truncating just V.
-    block = (V|H|bra).contract()
-    blockd = block
-    Us,ds,Vs = block.split([block.inds[0]],cutoff=0,absorb=None)
-    if ds.data[0] > 1:
-        ds /= ds.data[0]
-        block = (Us|ds|Vs).contract(output_inds=block.inds)
-    dsp = qtn.Tensor( np.sqrt(1-ds.data**2), ds.inds)
-    At = np.zeros((2,*block.data.shape,2),dtype=V.dtype)
-    block2 = (Us|dsp|Vs).contract(output_inds=block.inds)
-    At[0,...,0] = block.data
-    At[1,...,1] = block.data
-    At[0,...,1] = block2.data
-    At[1,...,0] = -block2.data
-    
-    At = At.reshape(vbsize,*At.shape[:-2]) # il reste a espérer que ça ne fait pas un rotation p/r l'ordre original
-    At = qtn.Tensor(data=At,inds=[*block.inds,*ket.inds])
-    A = At@Ub.H
-    return A,ds
-
-
-
-def old_layer_upd(B:qtn.Tensor,H:qtn.Tensor):
-    """
-    compute H_{a,b,e,f}B^{-1}_{c,d,e,f}
-    """
-    tmp_inds = set(H.inds).intersection(B.inds)
-    left_inds = set(H.inds).difference(tmp_inds)
-    # Uh,dVh = H.split(left_inds = None,right_inds=tmp_inds,absorb ='right', cutoff = 0)
-    Ub,db,Vb = B.split(left_inds = None, right_inds = tmp_inds,absorb = None,cutoff = 0)
-    problems = np.any(db.data == 0) #any zero singular values in H should be matched by a zero eigenvalue in B.
-    #In practice we will need to treat that case.
-    dbm = 1/db
-    E = (H|Vb.H|dbm|Ub.H).contract(output_inds=[*set(B.inds).symmetric_difference(H.inds)])
-    Ue,de,Ve = E.split(left_inds,absorb = None, cutoff = 0) #here cutoff must be zero, to avoid having a projection*unitary instead of a unitarty proper.
-    return Ue@Ve,de
-
-def Iterative_MPOembedGates(mpo:qtn.MatrixProductOperator,precision:float,maxlayers:int=40):
+def Iterative_MPOembedGatesA(mpo:qtn.MatrixProductOperator,precision:float,maxlayers:int=40):
     N_fact = np.sqrt(mpo[0]@mpo[0].H)#this assumes a canonical MPO: each and every tensor contribute the same value to the total norm^2 of the network, and 0 is the center.
     layercount = 0
     uid = qtn.rand_uuid() + '{}'
     layer_link_id = qtn.rand_uuid() + '{}'
-    intind = uid.format(layercount)+'{}'
-    N_fact =1/N_fact
-    accumulator = generate_id_MPO(intind , mpo.lower_ind_id,mpo.L+1,1)
-    print("accuuuuu norm",accumulator.H@accumulator)
-    for T in accumulator.tensors[:-1]:
-        T*=np.sqrt(0.5)
-    print("accuuuuu norm",accumulator.H@accumulator)
+    left_llid = layer_link_id.format('l{}')
+    right_llid = layer_link_id.format('r{}')
     mpo = mpo.copy()
+    Ltag = 'L'
+    Rtag = 'R'
+    Lop_tag = Ltag+'{}'
+    Rop_tag = Rtag+'{}'
+    accuhigh = uid.format(layercount)+'h{}'
+    acculow = uid.format(layercount)+'l{}'
+    accumulator = generate_id_MPO(accuhigh ,acculow,mpo.L+1,1)
     circuit = qtn.TensorNetwork([])
-    layer_gen = staircaselayer(uuid=layer_link_id)#,data = np.eye(4,4))
-    layer = layer_gen(intind,mpo.upper_ind_id,mpo.L,0)
-    L = generate_Lagrange_multipliers(layer)
-    for T in mpo.tensors: 
-        T *= N_fact
-    # print("mpo norm now:", mpo.H@mpo)
-    def cost(layer,mpo,L,id,C,m,accumulator):
-        return (iterative_projection_infidelity(layer,accumulator,mpo) + unitarity_cost2(layer,L,id))*(1 + gauge_regularizer(layer,id,C,m))
-    id = qtn.Tensor(data = jnp.eye(4,4).reshape(2,2,2,2), inds=('a','b','c','d'))
+
+    n = mpo.L
+    projzero = qtn.Tensor(data = [[1,0],[0,0]],inds=(mpo.lower_ind_id.format(n),mpo.upper_ind_id.format(n),) ,tags = ["IDzero"])
+    
+    right_layer_gen = staircaselayer(uuid=right_llid,data = np.eye(4,4))
+    right_layer_gen.data = np.eye(4,4).reshape(2,2,2,2) ##because there's a normalisation happening that is undesirable in this case.
+    left_layer_gen = staircaselayer(uuid=left_llid,data = np.eye(4,4))
+    left_layer_gen.data = np.eye(4,4).reshape(2,2,2,2) ##idem
+    accumulator = generate_id_MPO(accuhigh ,acculow,mpo.L+1,1)
+    right_layer = right_layer_gen(mpo.upper_ind_id,accuhigh,mpo.L,0,op_tag=Rop_tag,layer_tag=Rtag)
+    left_layer = left_layer_gen(mpo.lower_ind_id,acculow,mpo.L,0,op_tag=Lop_tag,layer_tag=Ltag)
+
     error = 1000
     output_map = {}
     for i in range(mpo.L+1):
-        output_map[intind.format(i)] = mpo.lower_ind_id.format(i)
-
+        output_map[accuhigh.format(i)] = acculow.format(i)
+    Layer_ind_id = 'LR{}'
     while error>precision and layercount < maxlayers:
-        layer = layer_SVD_optimizer(layer,accumulator,mpo,'L{}',10,1e-4)
-        optmzr = TNOptimizer(
-            layer,
-            loss_fn = cost,
-            # norm_fn=normalize_gates,
-            loss_kwargs = {'C':0.,'m':50},
-            loss_constants={'mpo': mpo,'id':id,'L':L,'accumulator':accumulator}, 
-            autodiff_backend='jax',      # {'jax', 'tensorflow', 'autograd','torch'}, only managed to get jax to work so far
-            optimizer='L-BFGS-B',
-            loss_target=precision
-        )
-        #optimize a layer
-        print(iterative_projection_infidelity(layer,accumulator,mpo))
-        # layer = optmzr.optimize_basinhopping(20,nhop=500,temperature=3.0,tol=30*precision)   
-        # optmzr.reset(layer,loss_target=precision)
-        grad = 1000
-        while grad > 2*precision:
-            layer = optmzr.optimize(5000,tol=precision)   
-            optmzr.reset(layer,loss_target=precision)
-            val,grad = optmzr.vectorized_value_and_grad(optmzr.vectorizer.vector)
-            grad = np.mean(grad)
-        #add the layer to the output structure and update the accumulator
-        layer = normalize_gates(layer)
-        error = iterative_projection_infidelity(layer,accumulator,mpo)
-        # layer.draw()
-        # accumulator.draw()
-        # mpo_layer.draw()
+        layer = left_layer|right_layer
+        for i,t in enumerate(layer):
+            t.add_tag(Layer_ind_id.format(i))
+        ##
+        if layercount == 0:
+            (layer|accumulator|projzero).draw()
+            LL = layer.reindex(output_map)
+            (LL|projzero).draw(initial_layout='spiral')
+        ##
+        layer = layer_SVD_optimizer(layer,accumulator,mpo,Layer_ind_id,10,1e-4) #Current behavior is anomalous. we're using the same function, so it's the layer&accumulator combo that is at fault.
         layercount += 1
-        next_intind = uid.format(layercount)+'{}'
-        rein_map = {}
-        for i in range(mpo.L+1):
-            rein_map[mpo.upper_ind_id.format(i)] = next_intind.format(i)
-            # if layercount == 1:
-            #     rein_map[intind.format(i)] = mpo.lower_ind_id.format(i)
-        layer.reindex_(rein_map)
-        mpo_layer = staircase2MPO(layer,intind,next_intind,layer_link_id,'L{}')
-        print("mpo@L", mpo_layer.H@layer)
+        if (error>precision and layercount < maxlayers):
+            next_accuhigh = uid.format(layercount)+'h{}'
+            next_acculow = uid.format(layercount)+'l{}'
+            rein_map = {}
+            for i in range(mpo.L+1):
+                rein_map[mpo.upper_ind_id.format(i)] = next_accuhigh.format(i)
+                rein_map[mpo.lower_ind_id.format(i)] = next_acculow.format(i)
+            layer.reindex_(rein_map)
+        else:
+            next_accuhigh = mpo.upper_ind_id
+            next_acculow = mpo.lower_ind_id
+
+        left_layer = qtn.TensorNetwork(layer['L'])
+        right_layer = qtn.TensorNetwork(layer['R'])
+        mpo_left_layer = staircase2MPO(left_layer,acculow,next_acculow,left_llid,Lop_tag)#the indices are wrong
+        mpo_right_layer = staircase2MPO(right_layer,accuhigh,next_accuhigh,right_llid,Rop_tag)
+        # print("mpo@L", mpo_layer.H@layer)
         circuit &= layer
-        intind = next_intind 
-        layer = layer_gen(intind,mpo.upper_ind_id,mpo.L,0)
-        for t in layer:
-            t*=4
-        accumulator.site_tag_id = "I{}" # tage sanitization, because it seems .apply rely on this, but doesn't check.
-        mpo_layer.site_tag_id = "I{}"
-        accumulator = accumulator.apply(mpo_layer)
-        accumulator.lower_ind_id = mpo.lower_ind_id#output of apply has the indices of mpo_layer
-        print(iterative_projection_infidelity(layer,accumulator,mpo))
+        accuhigh = next_accuhigh
+        acculow = next_acculow
+        right_layer = right_layer_gen(accuhigh,mpo.upper_ind_id,mpo.L,0,op_tag=Rop_tag,layer_tag=Rtag)
+        left_layer = left_layer_gen(mpo.lower_ind_id,acculow,mpo.L,0,op_tag=Lop_tag,layer_tag=Ltag)
+
+        accumulator.site_tag_id = "I{}" # tag sanitization, because it seems .apply rely on this, but doesn't check.
+        mpo_right_layer.site_tag_id = "I{}"
+        mpo_left_layer.site_tag_id = "I{}"
+        accumulator = mpo_right_layer.apply( accumulator.apply(mpo_left_layer))
+        accumulator.upper_ind_id = "__TMP__{}"
+        accumulator.lower_ind_id = acculow
+        accumulator.upper_ind_id = accuhigh
+        ####t'es rendu ici.
         accumulator = MPO_compressor(accumulator,precision*0.01,precision*0.02)
-        print(iterative_projection_infidelity(layer,accumulator,mpo))
         # layer.draw()
         # accumulator.draw()
-    for i in range(mpo.L+1):
-        output_map[intind.format(i)] = mpo.upper_ind_id.format(i)
+    # for i in range(mpo.L+1):
+    #     output_map[acculow.format(i)] = mpo.lower_ind_id.format(i)
+    #     output_map[accuhigh.format(i)] = mpo.upper_ind_id.format(i)
+    
+    accumulator.upper_ind_id = mpo.upper_ind_id
+    accumulator.lower_ind_id = mpo.lower_ind_id
+
     circuit.reindex_(output_map)
     return circuit,accumulator
 
