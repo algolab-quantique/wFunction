@@ -173,11 +173,11 @@ def cMPO_impl(Cf:Chebyshev,Cg:Chebyshev,chebyshev_order:int,nqbit:int,tol:float,
     if endian != "little":
         for i,c in enumerate(CMPO):#reverse the MPO to account for desired endianess
             CMPO[i] = reverse_qbit_order(c)
-    Y = np.array([[0.,1.],[1.,0.]])
-    I = np.array([[1.,0.],[0.,-1.]])
+    Y = np.array([[0.,1.],[-1.,0.]])
+    I = np.array([[1.,0.],[0.,1.]])
     CMPOY = [coef*qtn.MatrixProductOperator([ *[mpo[i].data for i,x in enumerate(mpo.tensors[:-1])],pad_reshape(mpo[mpo.L-1].data),Y.reshape(1,*Y.shape) ],site_tag_id=mpo.site_tag_id,upper_ind_id=mpo.upper_ind_id,lower_ind_id=mpo.lower_ind_id) for mpo,coef in zip(CMPO,Cf.coef)]
     CMPOI = [coef*qtn.MatrixProductOperator([ *[mpo[i].data for i,x in enumerate(mpo.tensors[:-1])],pad_reshape(mpo[mpo.L-1].data),I.reshape(1,*I.shape) ],site_tag_id=mpo.site_tag_id,upper_ind_id=mpo.upper_ind_id,lower_ind_id=mpo.lower_ind_id) for mpo,coef in zip(CMPO,Cg.coef)]
-    return MPO_compressing_sum([*CMPOY,*CMPOI],tol,tol*4) 
+    return MPO_compressing_sum([*CMPOY,*CMPOI],tol*0.9,tol) 
 
 @multimethod
 def controled_MPO(f, nqbit:int,tol:float,endian:str = "little") -> qtn.MatrixProductOperator:

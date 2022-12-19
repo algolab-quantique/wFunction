@@ -26,8 +26,9 @@ from quimb import norm
 import quimb.tensor as qtn
 from typing import List
 import numpy as np
+from .generate_simple_MPO import generate_id_MPO
 
-def Nroots_prediction(norms:np.array):
+def Nroots_prediction(norms:np.array)->float:
     """Compute the second order approximation to the Nth root of the product of the supplied list. Nth roots rapidly converge to 1 as N increase with finite precision arithmetic. This approximation should be more accurate than the direct computation with double precision floats"""
     #could be computed exactly using logarithms and exponentials... but it wouldn't save us from doing it repeatedly, and this is cheaper.
     av = np.mean(norms)
@@ -67,7 +68,7 @@ def compute_oc(MPO:qtn.MatrixProductOperator) -> tuple[int,int]:
             bond_name = MPO.bond(i-1,i)
         tp = qtn.Tensor(t.H)
         tp.reindex_({bond_name:tmp_id})
-        X = (t|tp).contract(preserve_tensor=True)
+        X = (t|tp).contract()
         is_center = not np.allclose(X.data/X.data.flatten()[0] , np.eye(X.data.shape[0]),rtol=1.e-12)
         if is_center:
             forward = False
@@ -155,6 +156,212 @@ def sum_sweep(MPOs:List[qtn.MatrixProductOperator],target:qtn.MatrixProductOpera
         count += 1
     out = (target[oc]@target[oc].H)
     return out
+
+
+def order_one_square_root(MPO:qtn.MatrixProductOperator,tol:float,crit:float,max_bond=None):
+    """compute an order one approximation to the square root of MPO assuming its eigenvalues are in the domain [0,1].
+    This approximation is better starting point for newton's method than order_two_square_root if it is know 
+    that no eigenvalues are close to zero."""
+    zero = generate_id_MPO(MPO.lower_ind_id,MPO.upper_ind_id,MPO.L,factor = 0.23570226)
+    one = MPO*2*0.40824829
+    return MPO_compressing_sum([zero,one],tol,crit,max_bond)
+
+def order_two_square_root(MPO:qtn.MatrixProductOperator,tol:float,crit:float,max_bond):
+    """compute an order two approximation to the square root of MPO assuming its eigenvalues are in the domain [0,1]
+       This approximation sacrifice some precision far from zero to increase it near zero.
+       Newton's procedure has trouble converging near zero. This compromise speeds up convergence near 
+       zero very significantly without sacrificing too much close to 1. In the Scalar case, about 8 iteration of newton's
+       procedure is more than enough to converge the whole domain to an absolute and relative error of 1e-16.
+       One must be careful to avoid division by zero when there are null eigenvalues. Typical pseudo-inverse methods should be safe."""
+    one = 3.425800798515744*MPO
+    two = -2.6352313834736494*MPO.apply(MPO)
+    return MPO_compressing_sum([one,two],tol,crit,max_bond)
+
+def cpt_sqrt_left_env(varL,cL,out,target,up_ind,dn_ind):
+    ##VARL update
+    A,B,Ad,Bd,c = setup_index_left_sqrt_var(varL,out,target,up_ind,dn_ind) 
+    out_varL = (varL|B|Bd|Ad|A).contract()
+    ##cL update
+    out_cL = (cL|c|Bd|Ad).contract()
+    return out_varL,out_cL
+
+def setup_index_left_sqrt_var(varL,out,target,up_ind,dn_ind):
+    B = out.copy()
+    left_ind = set(B.inds).intersection(varL.inds)
+    right_ind = set(B.inds).difference([*left_ind,up_ind,dn_ind])
+    A = out.copy()
+    right_ind = right_ind.pop()
+    A_reind = {up_ind:up_ind+'a',dn_ind:up_ind,right_ind:right_ind+'a'}
+    Bd_reind = {up_ind:up_ind+'uad',right_ind:right_ind+'bd'}
+    Ad_reind = {dn_ind:up_ind+'uad',up_ind:up_ind+'a',right_ind:right_ind+'ad'}
+    if len(left_ind) == 1: #not at boundary
+        left_ind = left_ind.pop()
+        A_reind[left_ind] = left_ind+'a'
+        Bd_reind[left_ind] = left_ind+'bd'
+        Ad_reind[left_ind] = left_ind+'ad'
+    Ad = A.H
+    A.reindex_(A_reind)
+    Bd = B.H
+    Bd.reindex_(Bd_reind)
+    Ad.reindex_(Ad_reind)
+    c = target.reindex({up_ind:up_ind+'a'})
+    return A,B,Ad,Bd,c
+
+def setup_index_right_sqrt_var(varR:qtn.Tensor,out:qtn.Tensor,target:qtn.Tensor,up_ind:str,dn_ind:str):
+    B = out.copy()
+    right_ind = set(B.inds).intersection(varR.inds)
+    left_ind = set(B.inds).difference([*right_ind,up_ind,dn_ind])
+    assert(len(right_ind) <= 1 and len(left_ind) == 1)
+    left_ind = left_ind.pop()
+    A = out.copy()
+    A_reind = {up_ind:up_ind+'a',dn_ind:up_ind,left_ind:left_ind+'a'}
+    Bd_reind = {up_ind:up_ind+'uad',left_ind:left_ind+'bd'}
+    Ad_reind = {dn_ind:up_ind+'uad',up_ind:up_ind+'a',left_ind:left_ind+'ad'}
+    if len(right_ind) == 1:
+        right_ind = right_ind.pop()
+        A_reind[right_ind] = right_ind+'a'
+        Bd_reind[right_ind] = right_ind+'bd'
+        Ad_reind[right_ind] = right_ind+'ad'
+    Ad = A.H
+    A.reindex_(A_reind)
+    Bd = B.H
+    Bd.reindex_(Bd_reind)
+    Ad.reindex_(Ad_reind)
+    ##cR update
+    c = target.reindex({up_ind:up_ind+'a'})
+    return A,B,Ad,Bd,c
+
+def cpt_sqrt_right_env(varR,cR,out,target,up_ind,dn_ind):
+    A,B,Ad,Bd,c = setup_index_right_sqrt_var(varR,out,target,up_ind,dn_ind)
+    ##VARR update
+    out_varR = (varR|B|Bd|Ad|A).contract()
+    ##cR update
+    out_cR = (cR|c|Bd|Ad).contract()
+    return out_varR,out_cR
+
+def init_sqrt_env(out,target,oc,up_ind:str,dn_ind:str,target_norms):
+    varL = [qtn.Tensor()]
+    cL = [qtn.Tensor()]
+    i = 0
+    while i< oc:
+        vl,cl = cpt_sqrt_left_env(varL[-1],cL[-1],out[i]/target_norms[i],target[i],up_ind.format(i),dn_ind.format(i)) 
+        varL.append(vl)
+        cL.append(cl)
+        i+=1
+    i = out.L-1
+    varR = [qtn.Tensor()]
+    cR = [qtn.Tensor()]
+    while i > oc:
+        vr,cr = cpt_sqrt_right_env(varR[-1],cR[-1],out[i]/target_norms[i],target[i],up_ind.format(i),dn_ind.format(i))
+        varR.append(vr)
+        cR.append(cr)
+        i -= 1
+    varR.reverse()
+    cR.reverse() 
+    return Env_holder([[*varL,None,*varR]]),Env_holder([[*cL,None,*cR]])
+
+def linsolve(T,C,precision):
+    """Penrose pseudo-inverse"""
+    left_inds = set(T.inds).intersection(C.inds)
+    U,d,V = qtn.tensor_split(T,left_inds=left_inds,absorb=None,cutoff=precision)
+    dm = 1/d#penrose pseudo inverse
+    cu,cd,cv = qtn.tensor_split(C,left_inds=set(V.inds).union(U.inds).intersection(C.inds),absorb=None,cutoff=None)
+    o_inds = set(T.inds).symmetric_difference(C.inds)
+    O = (U.H|dm|V.H|C).contract(output_inds=o_inds)# a/x_n
+    return O
+
+def sqrt_sweep(out:qtn.MatrixProductOperator,target,VarEnv,Cenv,oc,direction,target_norms,tol,max_bond):
+    count = 0
+    starting_oc = oc
+    L = out.L
+    while True:
+        indexshift = (direction - 1)//2
+        up_indn = out.upper_ind_id.format(oc+indexshift)
+        dn_indn = out.lower_ind_id.format(oc+indexshift)
+        up_indnp = out.upper_ind_id.format(oc+indexshift+1)
+        dn_indnp = out.lower_ind_id.format(oc+indexshift+1)
+        vL = VarEnv[0,oc-1+indexshift]
+        cL = Cenv[0,oc-1+indexshift]
+        On = out[oc+indexshift]
+        Onp = out[oc+indexshift+1]
+        tn = target[oc+indexshift]
+        tnp = target[oc+indexshift+1]
+        vR = VarEnv[0,oc+2+indexshift]
+        cR = Cenv[0,oc+2+indexshift]
+        An,Bn,Adn,Bdn,cn = setup_index_left_sqrt_var(vL,On,tn,up_indn,dn_indn)
+        Anp,Bnp,Adnp,Bdnp,cnp = setup_index_right_sqrt_var(vR,Onp,tnp,up_indnp,dn_indnp)
+        T = (vL|Adn|An|Adnp|Anp|vR).contract()
+        C = (cL|cn|Adn|Adnp|cnp|cR).contract()
+        xn = (Bn|Bnp).contract()
+        O = linsolve(T,C,tol)
+        O = (O+xn)/2
+        out_left_inds = set(Bn.inds).difference(Bnp.inds)
+        U,d,V = qtn.tensor_split(O,out_left_inds,absorb=None,cutoff=tol)
+        norm2 = np.sqrt(d@d)
+        norm = guess_tensor_norm(target_norms,norm2,oc,direction)
+        d/=norm
+        U.drop_tags()
+        V.drop_tags()
+        d.drop_tags()
+        for tag in out[oc+indexshift].tags:
+            U.add_tag(tag)
+        for tag in out[oc+1+indexshift].tags:
+            V.add_tag(tag)
+        if direction == 1:
+            VarEnv[0,oc+indexshift],Cenv[0,oc+indexshift] = cpt_sqrt_left_env(vL,cL,U,target[oc+indexshift],up_indn,dn_indn)
+            Cenv[0,oc+indexshift] /= norm**2
+            V = (V|d).contract(output_inds=V.inds)
+            U *= norm
+        else:
+            VarEnv[0,oc+indexshift+1],Cenv[0,oc+indexshift+1] = cpt_sqrt_right_env(vR,cR,V,target[oc+indexshift+1],up_indnp,dn_indnp)
+            Cenv[0,oc+indexshift+1] /= norm**2
+            U = (U|d).contract(output_inds=U.inds)
+            V *= norm
+
+        out[oc+indexshift] = U
+        out[oc+indexshift+1] = V
+ 
+            
+        oc += direction
+        direction  = direction - 2*(oc == (L-1) or oc==0)*direction
+
+        if oc == starting_oc:
+            err = (xn-O)
+            err = err@err.H
+            break
+        count += 1
+    return err
+
+def Square_Root(MPO:qtn.MatrixProductOperator,tol:float,crit:float,max_bond=None, out = None):
+    """compute the square root of the supplied MPO using newton's iterative formula."""
+    #first order solution:
+    if out is None:
+        out = order_two_square_root(MPO,tol,crit,max_bond)
+    cost = 100000
+    new_cost = 1000
+    oc = compute_oc(out)
+    if oc[1] == oc[0]:
+        oc = oc[1]
+    else:
+        oc = 0
+    if oc == out.L:
+        direction = -1
+    else:
+        direction = 1
+    norms = [x@x.H for x in out]
+    tgt_norm = np.mean(norms)
+    varEnv,Cenv = init_sqrt_env(out,MPO,oc,out.upper_ind_id,out.lower_ind_id,target_norms=norms)
+    iter_count = 0
+    while ( (np.abs(new_cost - cost) > tol or cost>1) and iter_count <200):
+        cost = new_cost
+        new_cost = sqrt_sweep(out,MPO,varEnv,Cenv,oc,direction,norms,crit,max_bond)
+        print(cost)
+        iter_count += 1
+    print(norms)
+    return out
+
+
+
 
 def Embed_in_unitaryMPO(MPO:qtn.MatrixProductOperator,tol:float,crit:float,max_bond=None):
     inL = MPO.L
@@ -251,6 +458,7 @@ def MPO_compressing_sum(MPOs:List[qtn.MatrixProductOperator],tol:float,crit:floa
             print("Compressing sum failed to converge")
             break
     print("iterations: ", iter_count)
+    print(norms)
     return out
 
 

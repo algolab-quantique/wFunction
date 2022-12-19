@@ -9,7 +9,7 @@ import pandas as pd
 
 from qiskit.circuit import qpy_serialization
 #%%
-with open("normal.qpy",'rb') as fd:
+with open("lognorm_5q.qpy",'rb') as fd:
     normal = qpy_serialization.load(fd)[0]
 
 circuit2 = normal

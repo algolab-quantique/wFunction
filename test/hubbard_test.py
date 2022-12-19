@@ -48,24 +48,24 @@ def Anderson_star(el,tl,U,mu,er,tr):
         tens[3,3,:,:] = F
         tens[4,4,:,:] = F
         tens[5,5,:,:] = id
-        tens[0,5,:,:] = e*(n_up+n_dn)
-        tens[1,5,:,:] = t*(F@c_up)
-        tens[2,5,:,:] = t*(c_up.T@F)
-        tens[3,5,:,:] = t*(F@c_dn)
-        tens[4,5,:,:] = t*(c_dn.T@F)
+        tens[5,0,:,:] = e*(n_up+n_dn)
+        tens[5,1,:,:] = t*(F@c_up)
+        tens[5,2,:,:] = t*(c_up.T@F)
+        tens[5,3,:,:] = t*(F@c_dn)
+        tens[5,4,:,:] = t*(c_dn.T@F)
         tensors.append(tens)
     tens = np.zeros((6,6,4,4))
     tens[0,0,:,:] = id
     tens[5,5,:,:] = id
-    tens[1,5,:,:] = (F@c_up)
-    tens[2,5,:,:] = (c_up.T@F)
-    tens[3,5,:,:] = (F@c_dn)
-    tens[4,5,:,:] = (c_dn.T@F)
-    tens[0,1,:,:] = (c_up.T)
-    tens[0,2,:,:] = (c_up)
-    tens[0,3,:,:] = (c_dn.T)
-    tens[0,4,:,:] = (c_dn)
-    tens[0,5,:,:] = U*(n_up@n_dn) - mu*(n_up+n_dn)
+    tens[5,1,:,:] = (F@c_up)
+    tens[5,2,:,:] = (c_up.T@F)
+    tens[5,3,:,:] = (F@c_dn)
+    tens[5,4,:,:] = (c_dn.T@F)
+    tens[1,0,:,:] = (c_up.T)
+    tens[2,0,:,:] = (c_up)
+    tens[3,0,:,:] = (c_dn.T)
+    tens[4,0,:,:] = (c_dn)
+    tens[5,0,:,:] = U*(n_up@n_dn) - mu*(n_up+n_dn)
     tensors.append(tens)
     for e,t in zip(er,tr):
         tens = np.zeros((6,6,4,4))
@@ -75,17 +75,21 @@ def Anderson_star(el,tl,U,mu,er,tr):
         tens[3,3,:,:] = F
         tens[4,4,:,:] = F
         tens[5,5,:,:] = id
-        tens[0,5,:,:] = e*(n_up+n_dn)
-        tens[0,1,:,:] = t*(c_up.T)
-        tens[0,2,:,:] = t*(c_up)
-        tens[0,3,:,:] = t*(c_dn.T)
-        tens[0,4,:,:] = t*(c_dn)
+        tens[5,0,:,:] = e*(n_up+n_dn)
+        tens[1,0,:,:] = t*(c_up.T)
+        tens[2,0,:,:] = t*(c_up)
+        tens[3,0,:,:] = t*(c_dn.T)
+        tens[4,0,:,:] = t*(c_dn)
         tensors.append(tens)
-    tensors[0] = tensors[0][:,5,:,:]
-    tensors[-1] = tensors[-1][0,:,:,:]
+    tensors[0] = tensors[0][5,:,:,:]
+    if len(tensors) > 1:
+        tensors[-1] = tensors[-1][:,0,:,:]
+    else:
+        tensors[0] = tensors[0][0,:,:]
     return qtn.MatrixProductOperator(tensors)
 
 #%%
+
 el = [-1,-0.5,-.2,0]
 tl = [0.1,0.1,.1,0.1]
 er = [1,0.5,.2][-1::-1]
@@ -159,10 +163,57 @@ def Liouville_Lanczos(H:MPO,O_0:MPO,psi:MPS,N:int,eps:float):
         b.append(b_ip)
         b_i = b_ip
         O_im,O_i = O_i,O_ip
+        print(O_i.max)
     return a,b[0:-1]
 
 # %%
 C_0 = MPO_C(c_up,F,len(el),H.L)
 #%%
 a,b = Liouville_Lanczos(H,C_0,psi,5,1e-12)
+# %%
+
+
+
+el = [-1,0]
+tl = [0.1,0.1]
+er = [1][-1::-1]
+tr = [0.1]
+U=8
+mu=4
+H = Anderson_star(el,tl,U,mu,er,tr)
+M = H.contract().transpose(*['k{}'.format(i) for i in range(4)],*['b{}'.format(i) for i in range(4)]).data.reshape(4**4,4**4)
+
+star_dmrg = qtn.DMRG(H,200,1e-12)
+star_dmrg.solve(tol = 1e-8,max_sweeps=100)
+# %%
+el = [-1,0]
+tl = [0.5,0.5]
+er = [1][-1::-1]
+tr = [0.5]
+U=8
+mu=4
+H = Anderson_star(el,tl,U,mu,er,tr)
+M = H.contract().transpose(*['k{}'.format(i) for i in range(4)],*['b{}'.format(i) for i in range(4)]).data.reshape(4**4,4**4)
+
+star_dmrg = qtn.DMRG(H,200,1e-12)
+res = star_dmrg.solve()
+
+#%%
+State = star_dmrg.state
+
+CUP = [ MPO_C(c_up,F,i,4) for i in range(4) ]
+CDUP = [ MPO_C(c_up.T,F,i,4) for i in range(4) ]
+CDN = [ MPO_C(c_dn,F,i,4) for i in range(4) ]
+CDDN = [ MPO_C(c_dn.T,F,i,4) for i in range(4) ]
+
+rhoup = np.zeros((4,4))
+rhodn = np.zeros((4,4))
+for i in range(4):
+    for j in range(4):
+        rhoup[i,j] = (CDUP[i].apply(CUP[j].apply(State)))@State
+        rhodn[i,j] = (CDDN[i].apply(CDN[j].apply(State)))@State
+print(rhoup.round(4))
+print(rhodn.round(4))
+
+
 # %%

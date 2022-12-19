@@ -2,6 +2,8 @@
 from jax.config import config
 config.update("jax_enable_x64", True)
 
+
+from typing import Union
 import quimb as qb
 import quimb.tensor as qtn
 # import quantit as qtt
@@ -92,18 +94,63 @@ class staircaselayer():
         self.data = data.reshape(2,2,2,2)
         # self.data /= np.sum(self.data**2)
         self.uuid = uuid
-    def __call__(self,input_idx, output_idx,Nlink, min_layer_number=0,dtype=jnp.float64,op_tag='L{}',layer_tag = 'L') -> qtn.TensorNetwork:
+    def __call__(self,input_idx, output_idx,Nlink, min_layer_number=0,dtype=jnp.float64,op_tag='L{}',layer_tag = 'L', left_right_index = False) -> Union[qtn.TensorNetwork,tuple[qtn.TensorNetwork,dict,dict]]:
         out = qtn.TensorNetwork([])
+        left_inds = {}
+        right_inds = {}
         i = 0
         if Nlink > 1:
-            out &= qtn.Tensor(data =jnp.copy(self.data), inds = [input_idx.format(i),input_idx.format(i+1),output_idx.format(i),self.uuid.format(i+1)],tags=[layer_tag,op_tag.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
+            left = [input_idx.format(i),input_idx.format(i+1)]
+            right =  [output_idx.format(i),self.uuid.format(i+1)]
+            utag = op_tag.format(i+min_layer_number)
+            left_inds[utag] = left
+            right_inds[utag] = right
+            out &= qtn.Tensor(data =jnp.copy(self.data), inds = [*left,*right],tags=[layer_tag,utag,"O{},{}".format(i+min_layer_number,i)])
             for i in range(1,Nlink-1):
-                out &= qtn.Tensor(data =jnp.copy(self.data), inds = [self.uuid.format(i),input_idx.format(i+1),output_idx.format(i),self.uuid.format(i+1)],tags=[layer_tag,op_tag.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
+                left = [self.uuid.format(i),input_idx.format(i+1)]
+                right = [output_idx.format(i),self.uuid.format(i+1)]
+                utag = op_tag.format(i+min_layer_number)
+                left_inds[utag] = left
+                right_inds[utag] = right
+                out &= qtn.Tensor(data =jnp.copy(self.data), inds = [*left,*right],tags=[layer_tag,utag,"O{},{}".format(i+min_layer_number,i)])
             i = Nlink-1
-            out &= qtn.Tensor(data =jnp.copy(self.data), inds = [self.uuid.format(i),input_idx.format(i+1),output_idx.format(i),output_idx.format(i+1)],tags=[layer_tag,op_tag.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
+            left = self.uuid.format(i),input_idx.format(i+1)
+            right = output_idx.format(i),output_idx.format(i+1)
+            utag = op_tag.format(i+min_layer_number)
+            left_inds[utag] = left
+            right_inds[utag] = right
+            out &= qtn.Tensor(data =jnp.copy(self.data), inds = [*left,*right],tags=[layer_tag,utag,"O{},{}".format(i+min_layer_number,i)])
         else:
-            out &= qtn.Tensor(data =jnp.copy(self.data), inds = [input_idx.format(i),input_idx.format(i+1),output_idx.format(i),output_idx.format(i+1)],tags=[layer_tag,op_tag.format(i+min_layer_number),"O{},{}".format(i+min_layer_number,i)])
-        return out
+            left = [input_idx.format(i),input_idx.format(i+1)]
+            right = [output_idx.format(i),output_idx.format(i+1)]
+            utag = op_tag.format(i+min_layer_number)
+            left_inds[utag] = left
+            right_inds[utag] = right
+            out &= qtn.Tensor(data =jnp.copy(self.data), inds = [*left,*right],tags=[layer_tag,utag,"O{},{}".format(i+min_layer_number,i)])
+        if left_right_index:
+            return out,left_inds,right_inds
+        else:
+            return out
+    @classmethod
+    def toMPO(Class,layer:qtn.TensorNetwork,input_idx:str,output_idx:str,bond_idx:str,single_tensor_tag):
+        """convert a staircase layer to a MPO."""
+        Out_tens = []
+        L = single_tensor_tag
+        t = layer[L.format(0)]
+        tl,tr = t.split(left_inds=[input_idx.format(0),output_idx.format(0)],absorb='both',cutoff=0.0)
+        inds = [ tl.inds[-1], *tl.inds[:-1]]
+        tl.transpose_(*inds)
+        Out_tens.append(tl)
+        Out_tens.append(tr)
+        for f,_ in enumerate(layer.tensors[1:]):
+            i = f+1
+            t = layer[L.format(i)]
+            tl,tr = t.split(left_inds=[bond_idx.format(i),output_idx.format(i)],absorb='both',cutoff=0.0)
+            Out_tens[-1] = Out_tens[-1]@tl
+            inds = [Out_tens[-1].inds[0],Out_tens[-1].inds[-1],*Out_tens[-1].inds[1:-1]]
+            Out_tens[-1].transpose_(*inds)
+            Out_tens.append(tr)
+        return qtn.MatrixProductOperator([t.data for t in Out_tens],shape = 'lrdu',upper_ind_id=output_idx,lower_ind_id=input_idx)   #À vérifier. 
 
 stl = staircaselayer()
 
@@ -336,120 +383,6 @@ def optimize_unitaries(Onet:qtn.TensorNetwork,tags_re,stateA:qtn.TensorNetwork,s
         count +=1
     return Onet
 
-if __name__=='__main__':
-    #fiddling to make this file work when loaded directly...
-    import sys
-    import os 
-    from pathlib import Path
-
-    file = Path(__file__).resolve()
-    parent, top = file.parent, file.parents[1]
-    sys.path.append(str(top))
-    try:
-        sys.path.remove(str(parent))
-    except ValueError: # Already removed
-        pass
-    import wFunction
-    __package__ = 'wFunction'
-    dir_path = os.path.dirname(os.path.realpath(__file__))
-    #fiddling done
-    from . import compress_algs as calgs
-    from . import interpolate as terp
-    from . import  Generate_circuit as gerc
-    import matplotlib.pyplot as plt
-    import seaborn as sb
-    sb.set_theme()
-    # N = 6
-    # X = qtt.networks.random_MPS(N,4,2)
-    # qX = qttMPS2quimbTN(X,'lfq').compress_all_().compress_all_()
-    # O = TwoqbitsLosange(qX)
-    # print(O)
-    # O.draw()
-    def f(x):
-        return np.exp(-(x)**2)
-    from scipy.stats import lognorm as scplog
-    def lognorm(x,mu,sigma):
-        return scplog.pdf(np.exp(-mu)*x,sigma )
-    f = lambda x : lognorm(x,1,1)
-    nqbit = 3
-    zero_state = trivial_state(nqbit)
-    domain = (0,8)
-    X = np.linspace(domain[0],domain[1],1000)
-    w = np.linspace(*domain,2**nqbit)
-    precision = 0.00001
-    Gate_precision = precision#1e-12
-    MPS_precision = precision #0.001
-    polys = gerc.poly_by_part(f,MPS_precision,nqbit,domain)
-    plt.plot(X,f(X))
-    for poly,subdomain in polys:
-        subdo = (terp.bits2range(subdomain[0],domain,nqbit),terp.bits2range(subdomain[1],domain,nqbit))
-        ww = np.linspace(*subdo,300)
-        plt.plot(ww,poly(ww), label = "poly {} {}".format(subdo,subdomain))
-    plt.legend()
-    plt.show()
-    target_norm2 = 0
-    mpses = [
-        terp.polynomial2MPS(poly,nqbit,pdomain,domain)
-        for poly,pdomain in polys]
-    for mps in mpses:
-        s = []
-        for binstate in range(2**nqbit):
-            M = mps
-            ts = trivial_state(nqbit,'lfq',binstate)
-            s.append(M@ts)
-        plt.plot(w,s,label = "mps")
-    plt.legend()
-    plt.show()
-    for mps in mpses:
-        target_norm2 += mps@mps
-    X = calgs.MPS_compressing_sum(mpses,target_norm2,0.1*MPS_precision,MPS_precision)
-    # print_sizes(X)
-    Norm = np.sqrt(X@X)
-    print("NORM:",Norm)
-    X /= Norm
-    qX = X
-    SM = []
-    for binstate in range(2**nqbit):
-        ts = trivial_state(nqbit,'lfq',binstate)
-        SM.append(qX@ts*Norm)
-    # plt.plot(w,SM)
-    # plt.show()
-    pass
-    O = TwoqbitsStaircaseLayers(qX,1)
-    # O.draw()
-    O, inf = MPS2Gates(X,Gate_precision,1,max_count=10)
-    # O.draw(show_tags=True, show_inds=True)
-    # O = optimize_unitaries(O,"O\d+",zero_state,qX,Gate_precision,max_iteration=100)
-    # for t in qX:
-    #     print(t)
-    SO = []
-    SM = []
-    # for t in O:
-    #     print(t)
-    # print(zero_state)
-    for binstate in range(2**nqbit):
-        ts = trivial_state(nqbit,'lfq',binstate)
-        Val = (zero_state&O)@ts
-        SO.append(Val)
-        SM.append(qX@ts)
-    # print(SO)
-    # print(SM)
-    SO = np.array(SO)
-    SM = np.array(SM)
-    print( "expected state vector" ,SM)
-    print( "expected operators (no permute): ")
-    for t in O:
-        print(t.tags)
-        print(t.data.reshape(4,4))
-    # print("<0|O^d O |0>",(zero_state&O)@(zero_state&O))
-    # print(qX@qX)
-    # F = (zero_state&O)@qX
-    # print(F)
-    # print(np.dot(SO,SM))
-    # print((1-F)**2)
-    plt.plot(SO)
-    plt.plot(SM)
-    plt.show()
 
 
 
