@@ -17,6 +17,7 @@ from .generate_simple_MPO import generate_id_MPO
 from .MPO_compress import MPO_compressor
 from multimethod import multimethod,overload
 from . import generate_simple_MPO as gsp
+from .compress_algs import layer_SVD_optimizer
 qtn.MatrixProductState
 TN = qtn.TensorNetwork
 
@@ -283,57 +284,8 @@ def Infidelity(Onet,mpo:qtn.MatrixProductOperator,id_net:qtn.MatrixProductOperat
 def full_loss(circuit,mpo,L,id,C,m,id_net):
     return (Infidelity(circuit,mpo,id_net) + unitarity_cost2(circuit,L,id))*(1 + gauge_regularizer(circuit,id,C,m))
 
-def retag(X:qtn.Tensor,tags):
-    X.drop_tags()
-    for tag in tags: 
-        X.add_tag(tag)
 
 
-def layer_SVD_optimizer(layer:qtn.TensorNetwork,layer_left_indices,accu:qtn.MatrixProductOperator,mpo:qtn.MatrixProductOperator,Layer_tag_id:str,max_it:int,prec:float):
-    n = mpo.L
-    layer_left_output_inds = set([mpo.lower_ind_id.format(i) for i in range(n)])
-    accu_left_inds = set(accu.upper_ind_id.format(i) for i in range(n) )
-    Ntens = len(layer.tensors)
-    layertags = [Layer_tag_id.format(i) for i in range(Ntens)]
-    err = 1000
-    it = 0
-    direction = 1
-    pos = 0
-    Ltags = [Layer_tag_id.format(pos) for pos in range(Ntens)]
-    curr_err = 1e6
-    while it<max_it and curr_err > prec:
-        it+=1
-        print("direction ",direction)
-        for i in range(Ntens):
-            curr_A = Ltags[pos]
-            print("tensor to update: ",curr_A)
-            accuH = accu.H
-            for t in accuH.tensors[:-2]:
-                t /= 2
-            X = mpo|accu.H|layer.H
-            # X.draw()
-            TBd = X.contract(set(X.tags).difference(layer[curr_A].tags))
-            update_tags = set(TBd.tags).difference(layer[curr_A].tags)
-            T = TBd.contract(update_tags)
-            T = T[update_tags]
-            left_inds = layer_left_indices[curr_A]
-            U,d,V = T.split(left_inds,cutoff = 0.0,absorb=None)#normalize...
-            T = U@V
-            print(T@T.H)
-            E = layer[curr_A] - T #Better error computation is possible.
-            err = (d-1).sum_reduce(d.inds[0]).data
-            retag(T,layer[curr_A].tags)
-            layer[curr_A] = T
-            # upd,d = layer_upd(B,H,layer[curr_A],oli,iri)
-            pos += direction
-        if abs(err - curr_err) < prec:
-            break
-        ##
-        direction *= -1
-        pos += direction
-        # print(iterative_projection_infidelity(T.select_any(layertags),accu,mpo))
-        # print(iterative_projection_infidelity(normalize_gates(T.select_any(layertags)),accu,mpo))
-    return layer.select_any(layertags)
 
 
 
@@ -360,7 +312,7 @@ def Iterative_MPOGatesA(mpo:qtn.MatrixProductOperator,precision:float,maxlayers:
     left_layer_gen = layer_gen(uuid=left_llid)
     left_layer_gen.data = np.eye(4,4).reshape(2,2,2,2) ##idem
     accumulator = gsp.generate_swap_MPO(accuhigh,acculow,mpo.L,[0,-1])
-    # accumulator = generate_id_MPO(accuhigh ,acculow,mpo.L,1)
+    accumulator = generate_id_MPO(accuhigh ,acculow,mpo.L,1)
     right_layer,left_right_inds,_ = right_layer_gen(accuhigh,mpo.upper_ind_id,mpo.L-1,0,op_tag=Rop_tag,layer_tag=Rtag,left_right_index=True)
     left_layer,_,left_left_inds = left_layer_gen(acculow,mpo.lower_ind_id,mpo.L-1,0,op_tag=Lop_tag,layer_tag=Ltag,left_right_index=True)
     (left_layer|accumulator|right_layer).draw()

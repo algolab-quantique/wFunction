@@ -6,9 +6,62 @@ import numpy as np
 # from multimethod import multimethod
 from typing import List
 
-"""
-Ce serait un exercice interessant de réimplmenter l'algo de compression avec quimb.
-"""
+
+def retag(X:qtn.Tensor,tags):
+    X.drop_tags()
+    for tag in tags: 
+        X.add_tag(tag)
+
+def layer_SVD_optimizer(layer:qtn.TensorNetwork,layer_left_indices:list[str],accu:qtn.MatrixProductOperator,mpo:qtn.MatrixProductOperator,Layer_tag_id:str,max_it:int,prec:float,*,renorm:bool=True,return_error:bool=False):
+    n = mpo.L
+    # layer_left_output_inds = set([mpo.lower_ind_id.format(i) for i in range(n)])
+    # accu_left_inds = set(accu.upper_ind_id.format(i) for i in range(n) )
+    Ntens = len(layer.tensors)
+    layertags = [Layer_tag_id.format(i) for i in range(Ntens)]
+    err = 1000
+    it = 0
+    direction = 1
+    pos = 0
+    Ltags = [Layer_tag_id.format(pos) for pos in range(Ntens)]
+    curr_err = 1e6
+    while it<max_it and curr_err > prec:
+        it+=1
+        # print("direction ",direction)
+        for i in range(Ntens):
+            curr_A = Ltags[pos]
+            # print("tensor to update: ",curr_A)
+            accuH = accu.H
+            if renorm:
+                for t in accuH.tensors[:-2]:
+                    t /= 2
+            X = mpo|accu.H|layer.H
+            # X.draw()
+            TBDtags = set(X.tags).difference(layer[curr_A].tags)
+            TBd = X.contract(TBDtags)
+            update_tags = set(TBd.tags).difference(layer[curr_A].tags)
+            T = TBd.contract(update_tags)
+            T = T[update_tags]
+            left_inds = layer_left_indices[curr_A]
+            U,d,V = T.split(left_inds,cutoff = 0.0,absorb=None)#normalize...
+            T = U@V
+            # print(T@T.H)
+            E = layer[curr_A] - T #Better error computation is possible.
+            err = (d-1).sum_reduce(d.inds[0]).data
+            retag(T,layer[curr_A].tags)
+            layer[curr_A] = T
+            # upd,d = layer_upd(B,H,layer[curr_A],oli,iri)
+            pos += direction
+        if abs(err) < prec:
+            break
+        curr_err = err
+        ##
+        direction *= -1
+        pos += direction
+        # print(iterative_projection_infidelity(T.select_any(layertags),accu,mpo))
+        # print(iterative_projection_infidelity(normalize_gates(T.select_any(layertags)),accu,mpo))
+    if return_error:
+        return layer.select_any(layertags),curr_err
+    return layer.select_any(layertags)
 
 # @multimethod
 # def mpsmps_env_prep(mpsA:qtt.networks.MPS,mpsB:qtt.networks.MPS):
@@ -162,7 +215,7 @@ def sum_sweep(MPSes:List[qtn.MatrixProductState],target:qtn.MatrixProductState,e
     return out
 
 # @multimethod
-def MPS_compressing_sum(MPSes:List[qtn.MatrixProductState],target_norm2,tol:float,crit:float):
+def MPS_compressing_sum(MPSes:List[qtn.MatrixProductState],target_norm2:float,tol:float,crit:float):
     #check free indices are compatible across all input MPS
     mps0 = MPSes[0]
     N = mps0.L
@@ -258,3 +311,6 @@ def MPS_compressing_sum(MPSes:List[qtn.MatrixProductState],target_norm2,tol:floa
 #    out = qtt.networks.random_MPS
 #    envs = [qtt.networks.MPT() for i in range(2)]
 #    envs[0] = mps_operator_mps_left_env()
+
+def MPS_compression(MPS:qtn.MatrixProductState,target_norm2:float,tol:float,crit:float):
+    return MPS_compressing_sum([MPS],target_norm2,tol,crit)

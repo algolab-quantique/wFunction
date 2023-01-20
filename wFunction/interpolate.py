@@ -1,21 +1,21 @@
 
 
-if __name__=='__main__' and (__package__ is None or __package__ == ''):
-    #fiddling to make this file work when loaded directly...
-    import sys
-    import os 
-    from pathlib import Path
+# if __name__=='__main__' and (__package__ is None or __package__ == ''):
+#     #fiddling to make this file work when loaded directly...
+#     import sys
+#     import os 
+#     from pathlib import Path
 
-    file = Path(__file__).resolve()
-    parent, top = file.parent, file.parents[1]
-    sys.path.append(str(top))
-    try:
-        sys.path.remove(str(parent))
-    except ValueError: # Already removed
-        pass
-    import wFunction
-    __package__ = 'wFunction'
-    dir_path = os.path.dirname(os.path.realpath(__file__))
+#     file = Path(__file__).resolve()
+#     parent, top = file.parent, file.parents[1]
+#     sys.path.append(str(top))
+#     try:
+#         sys.path.remove(str(parent))
+#     except ValueError: # Already removed
+#         pass
+#     import wFunction
+#     __package__ = 'wFunction'
+#     dir_path = os.path.dirname(os.path.realpath(__file__))
 
 import numpy as np
 # import quantit as qtt
@@ -156,62 +156,62 @@ def polynomial2MPS(poly:Poly, nqbits:int,polydomain:tuple[int,int], fulldomain:t
 #     return out
     
     
-if __name__=="__main__":
-    import matplotlib.pyplot as plt
-    import seaborn as sb
-    sb.set_theme()
-    def y(x):
-        return np.exp(-x**2)
-    from scipy.stats import lognorm as scplog
-    def lognorm(x,mu,sigma):
-        return scplog.pdf(np.exp(-mu)*x,sigma )
-    y = lambda x : lognorm(x,1,1)
-    domain = (0,7)
-    subdomain = [(domain[0],3),(4,domain[1])]
-    X = np.linspace(domain[0],domain[1],1000)
-    X1 = np.linspace(subdomain[0][0],subdomain[0][1],1000)
-    X2 = np.linspace(subdomain[1][0],subdomain[1][1],1000)
-    nbits = 3
-    poly1 = interpolate(y,10,subdomain[0])
-    poly2 = interpolate(y,10,subdomain[1])
-    plt.plot(X1,poly1(X1))
-    plt.plot(X2,poly2(X2))
-    plt.show()
-    mps1 = polynomial2MPS(poly1,nbits,[0b000,0b11],domain)
-    mps2 = polynomial2MPS(poly2,nbits,[0b100,0b111],domain)
-    bitsdomain = bits2range(np.array(range(2**nbits)),domain,nbits)
-    test_samples = y(bitsdomain)
-    mps1_samples = np.array([ qtn.MPS_computational_state(format(i,'0'+ str(nbits) +'b'),site_ind_id='lfq{}')@mps1 for i in range(0,2**nbits)])
-    mps2_samples = np.array([ qtn.MPS_computational_state(format(i,'0'+ str(nbits) +'b'),site_ind_id='lfq{}')@mps2 for i in range(0,2**nbits)])
-    # mps2_samples = np.array([ torch.matmul(mps2[0][:,(i>>3)&1,:],torch.matmul(torch.matmul(mps2[1][:,(i>>2)&1,:],mps2[2][:,(i>>1)&1,:]),mps2[3][:,i&1,:])).item() for i in range(0,16)])
-    # print(bitsdomain)
-    w = np.linspace(domain[0],domain[1],2**nbits)
-    # Norm = np.sum((mps1_samples+mps2_samples)**2)
-    Norm = mps1@mps1 + mps2@mps2
-    cMPS = compress_algs.MPS_compressing_sum([mps1,mps2],Norm,1e-6,1e-6)
-    # for t in cMPS:
-    #     print(t.size())
-    # oc = cMPS.orthogonality_center
-    # print("tensor norm: ", torch.tensordot(cMPS[oc],cMPS[oc],dims=([0,1,2],[0,1,2])).item())
-    # print("overlap : ",qtt.networks.contract(cMPS,mps1).item()+qtt.networks.contract(cMPS,mps2).item() )
-    print("expected norm: ", np.sum(y(X))*(X[1]-X[0]))
-    # print("expected norm from poly MPS: ", np.sum((mps1_samples+mps2_samples)**2 )*2/(2**4-1))
-    cMPS_samples = np.array([ qtn.MPS_computational_state(format(i,'0'+ str(nbits) +'b'),site_ind_id='lfq{}')@cMPS for i in range(0,2**nbits)])
-    mps1.show()
-    mps2.show()
-    cMPS.show()
-    print("test_samples")
-    print(test_samples)
-    print(mps1_samples)
-    print(mps2_samples)
-    print(cMPS_samples)
-    print("test_samples end")
-    # cMPS_samples = np.array([ torch.matmul(cMPS[0][:,(i>>3)&1,:],torch.matmul(torch.matmul(cMPS[1][:,(i>>2)&1,:],cMPS[2][:,(i>>1)&1,:]),cMPS[3][:,i&1,:])).item() for i in range(0,16)])
-    # print(cMPS_samples)
-    # print("actual norm polyMPS",np.sum(cMPS_samples**2)*2/(2**4-1))
-    plt.plot(w,mps1_samples)
-    plt.plot(w,mps2_samples)
-    plt.plot(w,cMPS_samples)
-    plt.show()
+# if __name__=="__main__":
+#     import matplotlib.pyplot as plt
+#     import seaborn as sb
+#     sb.set_theme()
+#     def y(x):
+#         return np.exp(-x**2)
+#     from scipy.stats import lognorm as scplog
+#     def lognorm(x,mu,sigma):
+#         return scplog.pdf(np.exp(-mu)*x,sigma )
+#     y = lambda x : lognorm(x,1,1)
+#     domain = (0,7)
+#     subdomain = [(domain[0],3),(4,domain[1])]
+#     X = np.linspace(domain[0],domain[1],1000)
+#     X1 = np.linspace(subdomain[0][0],subdomain[0][1],1000)
+#     X2 = np.linspace(subdomain[1][0],subdomain[1][1],1000)
+#     nbits = 3
+#     poly1 = interpolate(y,10,subdomain[0])
+#     poly2 = interpolate(y,10,subdomain[1])
+#     plt.plot(X1,poly1(X1))
+#     plt.plot(X2,poly2(X2))
+#     plt.show()
+#     mps1 = polynomial2MPS(poly1,nbits,[0b000,0b11],domain)
+#     mps2 = polynomial2MPS(poly2,nbits,[0b100,0b111],domain)
+#     bitsdomain = bits2range(np.array(range(2**nbits)),domain,nbits)
+#     test_samples = y(bitsdomain)
+#     mps1_samples = np.array([ qtn.MPS_computational_state(format(i,'0'+ str(nbits) +'b'),site_ind_id='lfq{}')@mps1 for i in range(0,2**nbits)])
+#     mps2_samples = np.array([ qtn.MPS_computational_state(format(i,'0'+ str(nbits) +'b'),site_ind_id='lfq{}')@mps2 for i in range(0,2**nbits)])
+#     # mps2_samples = np.array([ torch.matmul(mps2[0][:,(i>>3)&1,:],torch.matmul(torch.matmul(mps2[1][:,(i>>2)&1,:],mps2[2][:,(i>>1)&1,:]),mps2[3][:,i&1,:])).item() for i in range(0,16)])
+#     # print(bitsdomain)
+#     w = np.linspace(domain[0],domain[1],2**nbits)
+#     # Norm = np.sum((mps1_samples+mps2_samples)**2)
+#     Norm = mps1@mps1 + mps2@mps2
+#     cMPS = compress_algs.MPS_compressing_sum([mps1,mps2],Norm,1e-6,1e-6)
+#     # for t in cMPS:
+#     #     print(t.size())
+#     # oc = cMPS.orthogonality_center
+#     # print("tensor norm: ", torch.tensordot(cMPS[oc],cMPS[oc],dims=([0,1,2],[0,1,2])).item())
+#     # print("overlap : ",qtt.networks.contract(cMPS,mps1).item()+qtt.networks.contract(cMPS,mps2).item() )
+#     print("expected norm: ", np.sum(y(X))*(X[1]-X[0]))
+#     # print("expected norm from poly MPS: ", np.sum((mps1_samples+mps2_samples)**2 )*2/(2**4-1))
+#     cMPS_samples = np.array([ qtn.MPS_computational_state(format(i,'0'+ str(nbits) +'b'),site_ind_id='lfq{}')@cMPS for i in range(0,2**nbits)])
+#     mps1.show()
+#     mps2.show()
+#     cMPS.show()
+#     print("test_samples")
+#     print(test_samples)
+#     print(mps1_samples)
+#     print(mps2_samples)
+#     print(cMPS_samples)
+#     print("test_samples end")
+#     # cMPS_samples = np.array([ torch.matmul(cMPS[0][:,(i>>3)&1,:],torch.matmul(torch.matmul(cMPS[1][:,(i>>2)&1,:],cMPS[2][:,(i>>1)&1,:]),cMPS[3][:,i&1,:])).item() for i in range(0,16)])
+#     # print(cMPS_samples)
+#     # print("actual norm polyMPS",np.sum(cMPS_samples**2)*2/(2**4-1))
+#     plt.plot(w,mps1_samples)
+#     plt.plot(w,mps2_samples)
+#     plt.plot(w,cMPS_samples)
+#     plt.show()
 
 

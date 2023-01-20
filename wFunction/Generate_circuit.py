@@ -1,6 +1,7 @@
 import quimb.tensor as qtn
 import qiskit as qs
 from qiskit.quantum_info.operators import Operator
+from qiskit.extensions.unitary import UnitaryGate
 import numpy as np
 import re
 from collections import defaultdict
@@ -8,8 +9,10 @@ from . import interpolate as terp
 from . import mps2qbitsgates as mpqb
 from . import compress_algs as calgs
 from . import mpo2qbitsgates as mqg
+from .mps2qbitsgates import MPS2gates2
 from .Chebyshev import controled_MPO
 from qiskit.converters import circuit_to_gate
+import typing
 # import quantit as qtt
 from jax.config import config
 # import torch
@@ -67,8 +70,38 @@ def net2circuit(net:TN,nqbits,registers,name):
             circuit.unitary(**op)
     return circuit
 
-def poly_by_part(f,precision,nqbit,domain,qbmask=0,fulldomain=None,fullnqbits=None):
-    """Recursive separtion of the domain until the interpolation is able to reconstruct with a small enough error. Each polynomial in the return is paired with its bit domain"""
+def compute_Nlayer(net:TN,layer_rgx:typing.Pattern):
+    max_layer = 0
+    for tens in net:
+        for tag in tens.tags:
+                match = re.search(layer_rgx,tag)
+                if match:
+                    layer = match.group(1)
+                max_layer = max(max_layer,int(layer))
+    return max_layer+1
+
+def reverse_net2circuit(net:TN,layer_tag:str,op_tag:str,register:qs.QuantumRegister,name:str):
+    """
+    converts a tensor network to a qiskit quantum circuit. Tensors must be tag in reverse order of layer and in forward order within a layer.
+    """
+    layer_rgx = re.compile(layer_tag.format('(\d+)'))
+    Circ = qs.QuantumCircuit(register)
+    # op_rgx = re.compile(op_tag.format('(\d+)'))
+    nlayer = compute_Nlayer(net,layer_rgx)
+    for l in reversed(range(nlayer)):
+        Layer = net.select_any(layer_tag.format(l))
+        for o in range(register.size-1):
+            Op = Layer[op_tag.format(o)]
+            Matrix = np.array(Op.data).transpose([3,2,1,0]).reshape(4,4)
+            Qop = UnitaryGate(Operator(Matrix),layer_tag.format(l)+'_'+op_tag.format(o))
+            Circ.append(Qop,[o,o+1])
+    return Circ.reverse_bits()
+
+
+
+
+def poly_by_part(f:callable,precision:float,nqbit,domain:tuple[float,float],qbmask:int=0,fulldomain=None,fullnqbits=None):
+    """Recursive separation of the domain until the interpolation is able to reconstruct with a small enough error. Each polynomial in the return is paired with its bit domain"""
     if fulldomain is None:
         fulldomain = domain
     if fullnqbits is None:
@@ -80,7 +113,7 @@ def poly_by_part(f,precision,nqbit,domain,qbmask=0,fulldomain=None,fullnqbits=No
             return [(poly,qbdomain)]
         else:
             nqbit-=1
-            midpoint = (domain[0]+domain[1])/2 #Je crois que c'est ici le problème. Les valeur obtenue ne correspondent pas au point échantillionné, mais le cheb de degree 10 est assé précis pour que ce ne soit pas grave jusqu'ici.
+            midpoint = (domain[0]+domain[1])/2 
             leftdomain = (domain[0],midpoint)
             rightdomain=(midpoint,domain[1])
             leftbitmask = 1<<nqbit|qbmask
@@ -96,40 +129,41 @@ def poly_by_part(f,precision,nqbit,domain,qbmask=0,fulldomain=None,fullnqbits=No
         poly = np.polynomial.Polynomial([(y1*x0-y0*x1)/(x0-x1),(y0-y1)/(x0-x1)],domain,domain)
         return [(poly,qbdomain)]
 
-
-def Generate_unitary_net(f,MPS_precision,Gate_precision,nqbit,domain,Nlayer):
+def Generate_MPS(f,MPS_precision,nqbit,domain):
     polys = poly_by_part(f,MPS_precision,nqbit,domain)
     mpses = [terp.polynomial2MPS(poly,nqbit,pdomain,domain) for poly,pdomain in polys]
     Norm2 = np.sum([m.H@m for m in mpses])
-    mps = calgs.MPS_compressing_sum(mpses,Norm2,0.1*MPS_precision,MPS_precision)
+    return calgs.MPS_compressing_sum(mpses,Norm2,0.1*MPS_precision,MPS_precision)
+
+def Generate_unitary_net(f,MPS_precision,Gate_precision,nqbit,domain,Nlayer,mps2gates = mpqb.MPS2Gates):
+    mps = Generate_MPS(f,MPS_precision,nqbit,domain) 
     oc = mps.calc_current_orthog_center()[0]
     mps[oc]/= np.sqrt(mps[oc].H@mps[oc])#Set the norm to one, freshly computed to correct any norm error in the opimization
-    unitary_set,Infidelity = mpqb.MPS2Gates(mps,Gate_precision,Nlayer)
+    unitary_set,Infidelity = mps2gates(mps,Gate_precision,Nlayer)
     # print(Infidelity)
     return unitary_set
 
+
 def Generate_f_circuit(f,MPS_precision,Gate_precision,nqbit,domain,register,Nlayer,name="function_gate"):
-    unitary_set = Generate_unitary_net(f,MPS_precision,Gate_precision,nqbit,domain,Nlayer)
-    circuit = net2circuit(unitary_set,nqbit,register,name)
-    # circuit.name = name
-    return circuit
+    net = Generate_unitary_net(f,MPS_precision,Gate_precision,nqbit,domain,Nlayer,MPS2gates2)
+    return reverse_net2circuit(net,'L{}','Op{}',register,name)
 
 def Generate_f_gate(f,MPS_precision,Gate_precision,nqbit,domain,Nlayer,name="function_gate"):
     register = qs.QuantumRegister(nqbit)
     return circuit_to_gate(Generate_f_circuit(f,MPS_precision,Gate_precision,nqbit,domain,register,Nlayer,name))
 
-def Generate_g_circuit(f,MPO_precision,Gate_precision,nqbit,domain,register,Nlayer,endian="big",name="function_gate"):
-    a,b = domain
-    dtrans = lambda x :( (b-a) * x + b+a)/2
-    ff = lambda x: f(dtrans(x))
-    MPO_func = controled_MPO(ff,nqbit,MPO_precision,endian) 
-    gates,error = mqg.MPSO2Gates(MPO_func,Gate_precision,Nlayer)
-    circuit = net2circuit(gates,nqbit,register,name)
-    return circuit
+# def Generate_g_circuit(f,MPO_precision,Gate_precision,nqbit,domain,register,Nlayer,endian="big",name="function_gate"):
+#     a,b = domain
+#     dtrans = lambda x :( (b-a) * x + b+a)/2
+#     ff = lambda x: f(dtrans(x))
+#     MPO_func = controled_MPO(ff,nqbit,MPO_precision,endian) 
+#     gates,error = mqg.MPSO2Gates(MPO_func,Gate_precision,Nlayer)
+#     circuit = net2circuit(gates,nqbit,register,name)
+#     return circuit
 
-def Generate_g_gate(f,MPS_precision,Gate_precision,nqbit,domain,Nlayer,name="function_gate"):
-    register = qs.QuantumRegister(nqbit)
-    return circuit_to_gate(Generate_g_circuit(f,MPS_precision,Gate_precision,nqbit,domain,register,Nlayer,name))
+# def Generate_g_gate(f,MPO_precision,Gate_precision,nqbit,domain,Nlayer,name="function_gate"):
+#     register = qs.QuantumRegister(nqbit)
+#     return circuit_to_gate(Generate_g_circuit(f,MPO_precision,Gate_precision,nqbit,domain,register,Nlayer,name))
     
 
 if __name__=='__main__':
