@@ -10,6 +10,8 @@ import quimb.tensor as qtn
 import numpy as np
 import jax.numpy as jnp
 from quimb.tensor.optimize import TNOptimizer
+from .compress_algs import layer_SVD_optimizer,MPS_compression
+from .generate_simple_MPO import generate_id_MPO
 import re
 # import cotengra as ctg
 
@@ -93,28 +95,28 @@ class staircaselayer():
     def __init__(self,data = np.random.rand(4,4),uuid = qtn.rand_uuid() + '{}'):
         self.data = data.reshape(2,2,2,2)
         # self.data /= np.sum(self.data**2)
-        self.uuid = uuid
-    def __call__(self,input_idx, output_idx,Nlink, min_layer_number=0,dtype=jnp.float64,op_tag='L{}',layer_tag = 'L', left_right_index = False) -> Union[qtn.TensorNetwork,tuple[qtn.TensorNetwork,dict,dict]]:
+        self.bond_ind = uuid
+    def __call__(self,input_idx, output_idx,Nlink, min_layer_number=0,dtype=jnp.float64,op_tag='Op{}',layer_tag = 'L', left_right_index = False) -> Union[qtn.TensorNetwork,tuple[qtn.TensorNetwork,dict,dict]]:
         out = qtn.TensorNetwork([])
         left_inds = {}
         right_inds = {}
         i = 0
         if Nlink > 1:
             left = [input_idx.format(i),input_idx.format(i+1)]
-            right =  [output_idx.format(i),self.uuid.format(i+1)]
+            right =  [output_idx.format(i),self.bond_ind.format(i+1)]
             utag = op_tag.format(i+min_layer_number)
             left_inds[utag] = left
             right_inds[utag] = right
             out &= qtn.Tensor(data =jnp.copy(self.data), inds = [*left,*right],tags=[layer_tag,utag,"O{},{}".format(i+min_layer_number,i)])
             for i in range(1,Nlink-1):
-                left = [self.uuid.format(i),input_idx.format(i+1)]
-                right = [output_idx.format(i),self.uuid.format(i+1)]
+                left = [self.bond_ind.format(i),input_idx.format(i+1)]
+                right = [output_idx.format(i),self.bond_ind.format(i+1)]
                 utag = op_tag.format(i+min_layer_number)
                 left_inds[utag] = left
                 right_inds[utag] = right
                 out &= qtn.Tensor(data =jnp.copy(self.data), inds = [*left,*right],tags=[layer_tag,utag,"O{},{}".format(i+min_layer_number,i)])
             i = Nlink-1
-            left = self.uuid.format(i),input_idx.format(i+1)
+            left = self.bond_ind.format(i),input_idx.format(i+1)
             right = output_idx.format(i),output_idx.format(i+1)
             utag = op_tag.format(i+min_layer_number)
             left_inds[utag] = left
@@ -284,8 +286,8 @@ def magic_loss2(tn,psi,trivial_state,L,id,C,m):
     """No lagrange multiplier for this one, unitarity constraint must be imposed by some other means."""
     return (Infidelity(tn,psi,trivial_state) + unitarity_cost2(tn,L,id))*(1 + gauge_regularizer(tn,id,C,m))
 
-def trivial_state(nqbit:int,label='l0q',bin=0):
-    return qtn.TensorNetwork([qtn.Tensor(data = jnp.array([1*((1<<(nqbit-1-i))&bin == 0),1*((1<<(nqbit-1-i))&bin != 0)]), inds=[label+'{}'.format(i)]) for i in range(nqbit)])
+def trivial_state(nqbit:int,label='l0q{}',bin=0):
+    return qtn.TensorNetwork([qtn.Tensor(data = jnp.array([1*((1<<(nqbit-1-i))&bin == 0),1*((1<<(nqbit-1-i))&bin != 0)]), tags='TS',inds=[label.format(i)]) for i in range(nqbit)])
 
 def randomize_net(net):
     out = qtn.TensorNetwork([])
@@ -302,6 +304,50 @@ def normalize_gates(gate_set:qtn.TensorNetwork):
     for gate in gate_set:
         out &= normalize_gate(gate)
     return out
+
+
+def MPS2gates2(mps:qtn.MatrixProductState,precision:float,max_layer:int,dtype=np.float64):
+    """
+    Will proceed in the following manner:
+    1. optimize a single layer of staircase gates against the current MPS
+        1.1 accumulate the layer in the output structure
+    2. convert staircase in MPO
+    3. update the MPS by contracting hermitian conjugate of MPO with MPS (and compress)
+    4. Go to 1. if error is greater than target precision and max_layer is not reached
+    5. return the output structure to the caller
+    """
+    out = qtn.TensorNetwork([])
+    mps = mps.copy(deep=True)
+    layer_generator = staircaselayer(np.eye(4))
+    in_idx_L = qtn.rand_uuid()+'{}'
+    for i in range(max_layer):
+        in_idx = in_idx_L.format(i)+'{}'
+        Zero_state = trivial_state(mps.L,in_idx)
+        utag = 'Op{}'
+        Ltag = 'L{}'.format(i)
+        layer,left_inds,right_inds = layer_generator(in_idx,mps.site_ind_id,mps.L-1,0,dtype,utag,Ltag,left_right_index=True)
+        #for the SVD optimizer to stop as early as possible, il faut d'abord réduire la dimension de lien du MPS à deux..
+        # p-e qu'il est possible d'obtenir de meilleur résultat en limitant simplement le nombre de sweep. so far,so bad
+        #1.
+        cmps = mps.copy()
+        cmps.compress('left',max_bond=2)
+        layer,optimizer_err = layer_SVD_optimizer(layer,left_inds,Zero_state,cmps,utag,max_it=20,prec=1e-13,renorm=False,return_error=True)
+        out &= layer
+        #2.
+        layer_mpo = staircaselayer.toMPO(layer,in_idx,mps.site_ind_id,layer_generator.bond_ind,utag)
+        layer_mpo=layer_mpo.partial_transpose([*range(layer_mpo.L)]).H
+        #3.
+        layer_mpo.site_tag_id = mps.site_tag_id
+        new_mps = MPS_compression( (layer_mpo.H).apply(mps),1,1e-13,1e-13)
+        #4. 
+        err = np.sqrt(1 - np.abs((mps|layer.H|Zero_state).contract()))
+        print("error: ",err)
+        if err < precision:
+            break
+        mps = new_mps
+        mps.site_ind_id = in_idx
+
+    return out,err
 
 def MPS2Gates(mps,precision,Nlayer,max_count=40):
     qX = mps
