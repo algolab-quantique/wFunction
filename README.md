@@ -42,16 +42,16 @@ def lognorm(x,mu,sigma):
     return scplog.pdf(np.exp(-mu)*x,sigma )
 ```
 
-Une fois la fonction définie, on crée un registre quantique avec le nombre de qubits désiré, et on appelle *gen_circuit*.
+Une fois la fonction définie, on crée un registre quantique avec le nombre de qubits désiré, et on appelle *Generate_f_circuit*.
 Noté qu'on fixe les paramètres de la distribution en la plaçant dans un lambda.
-Les arguments sont: la distribution, la précision de la discrétisation intermédiaire de la fonction, la fidélité du circuit, le nombre de qubits, le domaine de la fonction, le registre quantique du circuit, le nombre de couches du circuit et, finalement, le nom du circuit.
+Les arguments sont: la distribution, la précision de la discrétisation intermédiaire de la fonction, la fidélité du circuit, le nombre de qubits, le domaine de la fonction, le registre quantique du circuit, le nombre maximal de couches du circuit et, finalement, le nom du circuit.
 
 
 ```python
 
 nqbit = 4
 threeqb = qs.QuantumRegister(nqbit)
-circ = wf.Generate_f_circuit(lambda x:lognorm(x,1,1),MPS_precision=1e-2,Gate_precision=1e-2,nqbit=nqbit,domain=[0,7],register=threeqb,Nlayer=500,name="lognormal")
+circ = wf.Generate_f_circuit(lambda x:lognorm(x,1,1),MPS_precision=1e-14,Gate_precision=1e-2,nqbit=nqbit,domain=[0,7],register=threeqb,Nlayer=500,name="lognormal")
 
 
 ```
