@@ -33,6 +33,7 @@ Dans la cellule suivante, on importe wFunction, qiskit et numpy et on définit l
 
 
 ```python
+
 import wFunction as wf
 import qiskit as qs
 import numpy as np
@@ -47,6 +48,7 @@ Les arguments sont: la distribution, la précision de la discrétisation interm�
 
 
 ```python
+
 nqbit = 4
 threeqb = qs.QuantumRegister(nqbit)
 circ = wf.Generate_f_circuit(lambda x:lognorm(x,1,1),MPS_precision=1e-2,Gate_precision=1e-2,nqbit=nqbit,domain=[0,7],register=threeqb,Nlayer=500,name="lognormal")
