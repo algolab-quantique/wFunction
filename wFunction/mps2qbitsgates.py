@@ -330,7 +330,7 @@ def MPS2gates2(mps:qtn.MatrixProductState,precision:float,max_layer:int,dtype=np
         # p-e qu'il est possible d'obtenir de meilleur résultat en limitant simplement le nombre de sweep. so far,so bad
         #1.
         cmps = mps.copy()
-        cmps.compress('left',max_bond=2)
+        # cmps.compress('left',max_bond=2)
         layer,optimizer_err = layer_SVD_optimizer(layer,left_inds,Zero_state,cmps,utag,max_it=20,prec=1e-13,renorm=False,return_error=True)
         out &= layer
         #2.

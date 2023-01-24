@@ -64,3 +64,43 @@ for key in dict_data:
 
 plt.scatter(x,y)
 # %%
+from scipy.stats import lognorm as scplog
+
+def lognorm(x,mu,sigma):
+    return scplog.pdf(np.exp(-mu)*x,sigma )
+ 
+def lognorm11(x):
+    return lognorm(x,1,1)
+
+domain = [0,7]
+
+#%% Teste le générateur de MPS
+
+mps = Generate_MPS(lognorm11,mps_precision,nqbit,domain)
+oc = mps.calc_current_orthog_center()[0]
+mps[oc]/= np.sqrt(mps[oc].H@mps[oc])#Set the norm to one, freshly computed to correct any norm error in the opimization
+test = []
+for i in range(2**nqbit):
+    ts = trivial_state(nqbit,mps.site_ind_id,i)
+    n = ts@mps
+    test.append(n)
+x = np.linspace(domain[0],domain[1],2**nqbit,endpoint=True)
+fx = lognorm11(x)
+plt.plot(fx/fx[19]*test[19])
+plt.plot(test)
+
+#%%
+register = qs.QuantumRegister(nqbit)
+net = Generate_unitary_net(lognorm11,mps_precision,0.01,5,domain,30,MPS2gates2)
+test = []
+for i in range(2**nqbit):
+    ts = trivial_state(nqbit,'lfq{}',i)
+    n = ts@net
+    test.append(n.data[0,0,0,0,0])
+plt.plot(fx/fx[19]*test[19])
+plt.plot(test)
+plt.show()
+plt.semilogy(np.abs(fx/fx[19]*test[19]-test))
+
+#%%
+Circ = reverse_net2circuit(net,'L{}','Op{}',register,'gaussian')

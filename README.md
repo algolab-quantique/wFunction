@@ -33,7 +33,6 @@ Dans la cellule suivante, on importe wFunction, qiskit et numpy et on définit l
 
 
 ```python
-%%capture
 import wFunction as wf
 import qiskit as qs
 import numpy as np
@@ -41,15 +40,16 @@ from scipy.stats import lognorm as scplog
 def lognorm(x,mu,sigma):
     return scplog.pdf(np.exp(-mu)*x,sigma )
 ```
+
 Une fois la fonction définie, on crée un registre quantique avec le nombre de qubits désiré, et on appelle *gen_circuit*.
 Noté qu'on fixe les paramètres de la distribution en la plaçant dans un lambda.
 Les arguments sont: la distribution, la précision de la discrétisation intermédiaire de la fonction, la fidélité du circuit, le nombre de qubits, le domaine de la fonction, le registre quantique du circuit, le nombre de couches du circuit et, finalement, le nom du circuit.
 
 
 ```python
-%%capture
-threeqb = qs.QuantumRegister(3)
-circ = wf.gen_circuit(lambda x:lognorm(x,1,1),1e-5,Gate_precision=1e-12,nqbit=3,domain=[0,7],register=threeqb,Nlayer=1,name="lognormal")
+nqbit = 4
+threeqb = qs.QuantumRegister(nqbit)
+circ = wf.Generate_f_circuit(lambda x:lognorm(x,1,1),MPS_precision=1e-2,Gate_precision=1e-2,nqbit=nqbit,domain=[0,7],register=threeqb,Nlayer=500,name="lognormal")
 
 
 ```
@@ -64,24 +64,6 @@ circ.draw('mpl')
 
     
 ![png](README_files/README_4_0.png)
-    
-
-
-
-Le circuit généré est en *big-endian*, la convention opposée à celle de qiskit.
-On peut passer en *little-endian* (et vice-versa) avec la méthode *reverse_bits*
-
-
-```python
-circ = circ.reverse_bits()
-circ.draw('mpl')
-```
-
-
-
-
-    
-![png](README_files/README_6_0.png)
     
 
 
@@ -109,7 +91,7 @@ plot_histogram(counts)
 
 
     
-![png](README_files/README_8_0.png)
+![png](README_files/README_6_0.png)
     
 
 
@@ -118,9 +100,8 @@ Si l’on désire plutôt que les probabilités des états correspondent à une 
 
 
 ```python
-threeqb = qs.QuantumRegister(3)
-circ = wf.gen_circuit(lambda x:np.sqrt(lognorm(x,1,1)),1e-5,Gate_precision=1e-12,nqbit=3,domain=[0,7],register=threeqb,Nlayer=1,name="lognormal")
-circ = circ.reverse_bits()
+threeqb = qs.QuantumRegister(nqbit)
+circ = wf.Generate_f_circuit(lambda x:np.sqrt(lognorm(x,1,1)),MPS_precision=1e-14,Gate_precision=1e-2,nqbit=nqbit,domain=[0,7],register=threeqb,Nlayer=20,name="lognormal")
 circ.measure_all()
 simulator = QasmSimulator()
 compiled_circuit = transpile(circ, simulator)
@@ -131,23 +112,15 @@ counts = result.get_counts(compiled_circuit)
 plot_histogram(counts)
 ```
 
-    +0.000000000903 [best: +0.000000000903] :  40%|██████████████████▍                           | 40/100 [00:00<00:00, 236.00it/s]
-
-
-    initial gradient:  1.4197596000640642e-05
-
-
-    +0.000000000000 [best: +0.000000000000] :   0%|                                           | 18/20000 [00:00<00:09, 2205.34it/s]
-
-
-    current error:  2.708944180085382e-14  unitarity error:  9.282657525020198e-15
+    error:  0.20961584702731437
+    error:  0.008291564420607056
 
 
 
 
 
     
-![png](README_files/README_10_4.png)
+![png](README_files/README_8_1.png)
     
 
 
