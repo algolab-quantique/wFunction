@@ -21,7 +21,7 @@ if __name__=='__main__' and (__package__ is None or __package__ == ''):
 from typing import Any, Union
 
 from sympy import Lambda
-from torch import le
+# from torch import le
 from . import interpolate as terp
 from .MPO_compress import MPO_compressing_sum
 import jax.numpy as jnp
