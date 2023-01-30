@@ -23,6 +23,7 @@ g99op = ZeroPiDomain(gauss99,domain)
 #%%
 # C = qubitize(gauss,5,domain,max_layers,precision)
 # print(get_phi_rotation(gauss,domain,max_layers,precision))
+U,doubled = get_rotations_matrices(gauss95,domain,max_layers,precision)
 phi99 = [*get_angles(gauss99,domain,max_layers,precision)]
 rots99 = [*get_rotations(gauss99,domain,max_layers,precision)]
 phi95 = [*get_angles(gauss95,domain,max_layers,precision)]
@@ -30,11 +31,11 @@ rots95 = [*get_rotations(gauss95,domain,max_layers,precision)]
 
 #%%
 err =(np.array(phi2rots(phi95)))-(np.array(rots95))
-plt.plot(np.abs(err[:,0,0]),label='00')
+# plt.plot(np.abs(err[:,0,0]),label='00')
 # plt.plot(np.abs(err[:,0,1]),label='01')
 # plt.plot(np.abs(err[:,1,0]),label='10')
-plt.plot(np.abs(err[:,1,1]),label='11')
-plt.legend()
+# plt.plot(np.abs(err[:,1,1]),label='11')
+# plt.legend()
 print(exp(phi95[-1]))
 print(rots95[-1])
 
@@ -42,13 +43,16 @@ print(rots95[-1])
 theta = np.linspace(0,np.pi,200)
 f95 = eval_SU2_func(phi95)
 f99 = eval_SU2_func(phi99)
+flU = evalUmats_SU2_func(U)
 ft95 = np.array([f95(tt) for tt in theta])
+flUt = np.array([flU(tt) for tt in theta])
 ft99 = np.array([f99(tt) for tt in theta])
 g99 = g99op(theta)
 g95 = g95op(theta)
 g = gauss(theta)
 plt.plot(theta,ft95[:,0,0],label="ft9500")
 plt.plot(theta,ft99[:,0,0],label="ft9900")
+plt.plot(theta,flUt[:,0,0],label="flU00")
 plt.plot(theta,ft95[:,1,1],label="ft9511")
 plt.plot(theta,ft99[:,1,1],label="ft9911")
 plt.plot(theta,g99,label="g99")
@@ -69,7 +73,6 @@ print(W(numbaList(phi95),ttheta,g99w))
 #%%
 nqbits=5
 circ = qubitize(gauss,nqbits,domain,256,1e-2)
-circ.draw('mpl')
 
 from qiskit.quantum_info import SparsePauliOp
 
@@ -137,8 +140,8 @@ for key in result.quasi_dists[0]:
     data[int(key)] = result.quasi_dists[0][key]
 plt.plot(data[:16],label="qubit 4 = 0")
 plt.plot(data[16:],label ="qubit 4 = 1")
-plt.legend()
-plt.title("Probabilités de mesure, qubits 0 à 3 initialisé en superposition uniforme")
-plt.savefig("dist.pdf")
+# plt.legend()
+# plt.title("Probabilités de mesure, qubits 0 à 3 initialisé en superposition uniforme")
+# plt.savefig("dist.pdf")
 
 # %%

@@ -1,37 +1,15 @@
-
-
-# if __name__=='__main__' and (__package__ is None or __package__ == ''):
-#     #fiddling to make this file work when loaded directly...
-#     import sys
-#     import os 
-#     from pathlib import Path
-
-#     file = Path(__file__).resolve()
-#     parent, top = file.parent, file.parents[1]
-#     sys.path.append(str(top))
-#     try:
-#         sys.path.remove(str(parent))
-#     except ValueError: # Already removed
-#         pass
-#     import wFunction
-#     __package__ = 'wFunction'
-#     dir_path = os.path.dirname(os.path.realpath(__file__))
-
 import numpy as np
-# import quantit as qtt
-# import torch
 from scipy.special import binom
 import quimb.tensor as qtn
-from . import compress_algs
 
 numpy = np
 Poly=numpy.polynomial.polynomial.Polynomial
 
 """
-seperate the function in 2^k (with k not too large) subdomains.
-Fit the subdomains on smooth low-degree polynomials.
+seperate the function in k (with k not too large) subdomains.
+Fit the subdomains on smooth low-degree (10) polynomials.
 Turn each polynomial into a MPS where the qbits adress a value of the indepent variable of the function on the domain.
-Sum and condense all those (2^k) MPS into a single one.
+Sum and condense all those k MPS into a single one.
 """
 
 def bits2range(bits:int,domain:tuple[float,float],nbits:int):

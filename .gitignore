@@ -3,3 +3,5 @@
 wFunc_test/*
 dist/*
 *.DS_Store*
+Test_env/*
+*.pdf

@@ -1,9 +1,5 @@
-# import quantit as qtt
-# import torch
 import quimb.tensor as qtn
-import quimb
 import numpy as np
-# from multimethod import multimethod
 from typing import List
 
 
@@ -63,27 +59,6 @@ def layer_SVD_optimizer(layer:qtn.TensorNetwork,layer_left_indices:list[str],acc
         return layer.select_any(layertags),curr_err
     return layer.select_any(layertags)
 
-# @multimethod
-# def mpsmps_env_prep(mpsA:qtt.networks.MPS,mpsB:qtt.networks.MPS):
-#     S = len(mpsA)+2
-#     out = qtt.networks.MPT(len(mpsA)+2)
-#     out[0] = torch.eye(mpsA[0].size()[0],mpsB[0].size()[0])
-#     out[-1] = torch.eye(mpsA[-1].size()[2],mpsB[-1].size()[2])
-#     for i in range(S-1,1,-1):
-#         out[i-1] = mps_mps_right_env(mpsA[i-2],mpsB[i-2],out[i])
-#     return out
-
-# def mps_mps_right_env(tensA,tensB,env):
-#     return torch.tensordot(tensB,torch.tensordot(env,tensA.conj(),dims=([1],[2])),dims=([1,2],[2,0]))
-# def mps_mps_left_env(tensA,tensB,env):
-#     tmp = torch.tensordot(env,tensB,dims=([0],[0]))
-#     return torch.tensordot(tmp,tensA.conj(),dims=([0,1],[0,1]))
-
-# def print_sizes(x:qtt.networks.MPS):
-#     for t in x:
-#         print(t.size(),end=",")
-#     print("\n")
-
 class Env_holder:
     """
     class to hold the MPTs that makes up the enviroments of a 1d-sweeping tensor algorithm.
@@ -100,50 +75,6 @@ class Env_holder:
         i,j = i
         self.env[i][j+1] = value
 
-# @multimethod
-# def sum_sweep(MPSes:List[qtt.networks.MPS],target:qtt.networks.MPS,env:List[qtt.networks.MPT],direction:int,tol:float):
-#     oc = target.orthogonality_center
-#     #Loop from oc to end in direction and then back to oc.
-#     Env = Env_holder(env)
-#     if oc == 0:
-#         direction = -1
-#     if oc == len(target)-1:
-#         direction = 1
-#     while True:
-#         direction  = direction - 2*(oc == (len(target)-1) or oc==0)*direction # change direction at N-2 or 1
-#         # compute update by summing all [env_[i,j-1]]-[t_[i,j]] or [t_[i,j]-[env_[i,j+1]]]
-            
-#         # svd to extract psi_[j]
-#         # update env at site j
-#         # next site
-#         if direction == 1:
-#             Tens = torch.tensordot(torch.tensordot(torch.tensordot(Env[0,oc-1],MPSes[0][oc],dims=([0],[0])),MPSes[0][oc+1],dims=([2],[0])),Env[0,oc+2],dims=([3],[0]))
-#             for i,t in enumerate(MPSes[1:]):
-#                 Tens += torch.tensordot(torch.tensordot(torch.tensordot(Env[i+1,oc-1],t[oc],dims=([0],[0])),t[oc+1],dims=([2],[0])),Env[i+1,oc+2],dims=([3],[0]))
-#             U,d,V = qtt.linalg.svd(Tens,split=2,tol=tol)
-#             target[oc] = U
-#             for i,t in enumerate(MPSes):
-#                 Env[i,oc] = mps_mps_left_env(target[oc],t[oc],Env[i,oc-1])
-#         else:
-#             Tens = torch.tensordot(torch.tensordot(torch.tensordot(Env[0,oc-2],MPSes[0][oc-1],dims=([0],[0])),MPSes[0][oc],dims=([2],[0])),Env[0,oc+1],dims=([3],[0]))
-#             for i,t in enumerate(MPSes[1:]):
-#                 Tens += torch.tensordot(torch.tensordot(torch.tensordot(Env[i+1,oc-2],t[oc-1],dims=([0],[0])),t[oc],dims=([2],[0])),Env[i+1,oc+1],dims=([3],[0]))
-#             U,d,V = qtt.linalg.svd(Tens,split=2,tol=tol)
-#             target[oc] = V.conj().permute([2,0,1])
-#             for i,t in enumerate(MPSes):
-#                 Env[i,oc] = mps_mps_right_env(target[oc],t[oc],Env[i,oc+1])
-
-#         oc += direction
-#         if oc == target.orthogonality_center:
-#             target[oc] = torch.zeros(Env[0,oc-1].size()[1],target[oc].size()[1],Env[0,oc+1].size()[1])
-#             for i,t in enumerate(MPSes):
-#                 target[oc] += torch.tensordot(torch.tensordot(Env[i,oc-1],t[oc],dims=([0],[0]) ),Env[i,oc+1],dims=([2],[0]) )
-#             break
-#     #compute state fidelity and return.
-#     out = torch.tensordot(target[oc],target[oc].conj(),dims=([0,1,2],[0,1,2])).item()
-#     return out
-
-# @multimethod
 def mpsmps_env_prep(mpsA:qtn.MatrixProductState,mpsB:qtn.MatrixProductState):
     outleft = []
     outleft.append(qtn.Tensor(data = 1,inds = ()))
@@ -161,7 +92,6 @@ def mpsmps_env_prep(mpsA:qtn.MatrixProductState,mpsB:qtn.MatrixProductState):
     outright.reverse()
     return outleft+[qtn.Tensor()]+outright
 
-# @multimethod
 def sum_sweep(MPSes:List[qtn.MatrixProductState],target:qtn.MatrixProductState,envs,direction,tol,oc):
     Env = Env_holder(envs)
     starting_oc = oc
@@ -214,7 +144,6 @@ def sum_sweep(MPSes:List[qtn.MatrixProductState],target:qtn.MatrixProductState,e
     out = target[oc]@target[oc].H
     return out
 
-# @multimethod
 def MPS_compressing_sum(MPSes:List[qtn.MatrixProductState],target_norm2:float,tol:float,crit:float):
     #check free indices are compatible across all input MPS
     mps0 = MPSes[0]
@@ -239,7 +168,6 @@ def MPS_compressing_sum(MPSes:List[qtn.MatrixProductState],target_norm2:float,to
     else:
         oc = out.L-1
     envs = [mpsmps_env_prep(out,m) for m in MPSes]
-    cost = 1.0e18
     new_cost = 0
     direction = 1
     iter_count = 0
@@ -248,69 +176,11 @@ def MPS_compressing_sum(MPSes:List[qtn.MatrixProductState],target_norm2:float,to
         new_cost = target_norm2 - sum_sweep_out
         if new_cost < crit:
             break
-        cost = new_cost
         iter_count += 1
         if (iter_count > 1000):
             print("Compressing sum failed to converge")
             break
     return out
-
-# @multimethod
-# def MPS_compressing_sum(MPSes:List[qtt.networks.MPS],target_norm2,tol:float,crit:float):
-#     """ perform the sum of MPS and compress the result using a tol truncating SVD, stop when the fidelity is stationnary to the crit"""
-#     length_MPS = len(MPSes[0])
-#     out = qtt.networks.random_MPS(length_MPS,2,2)
-#     out[0] = out[0][0:1,:,:]
-#     out[-1] = out[-1][:,:,0:1]
-#     out.move_oc(0)
-#     assert(all([len(m)==length_MPS for m in MPSes]))
-#     envs = [mpsmps_env_prep(out,m) for m in MPSes]
-#     cost = 1.0e18
-#     new_cost = 0
-#     direction = 1
-#     iter_count = 0
-#     while True:
-#         sum_sweep_out = sum_sweep(MPSes,out,envs,direction,tol)
-#         new_cost = target_norm2 - sum_sweep_out
-#         if new_cost < crit:
-#             break
-#         cost = new_cost
-#         iter_count += 1
-#         if (iter_count > 1000):
-#             print("Compressing sum failed to converge")
-#             break
-#     return out
-
-# def mps_operator_mps_left_env(mpsA:torch.Tensor,operator:torch.Tensor,mpsB:torch.Tensor,env):
-#     out = torch.tensordot(env,mpsB,dims=([0],[0]))
-#     out = torch.tensordot(out,operator,dims=([0,2],[0,3]))
-#     out = torch.tensordot(out,mpsA.conj(),dims=([0,2],[0,1]))
-#     return out
-
-# def mps_operator_mps_right_env(mpsA:torch.Tensor,operator:torch.Tensor,mpsB:torch.Tensor,env):
-#     out = torch.tensordot(env,mpsB,dims=([0],[2]))
-#     out = torch.tensordot(out,operator,dims=([0,3],[2,3]))
-#     out = torch.tensordot(out,mpsA.conj(),dims=([0,3],[2,1]))
-#     return out
-
-# def mpsoperatormps_env_prep(mpsA:qtt.networks.MPS,mpo:qtt.networks.MPO,mpsB:qtt.networks.MPS,oc):
-#     S = len(mpsA)+2
-#     out = qtt.networks.MPT(len(mpsA)+2)
-#     out[0] = torch.tensordot(torch.eye(mpsA[0].size()[0],mpsB[0].size()[0]),torch.ones([1]),dims=([],[])).permute([0,2,1]).to(mpsA[0])
-#     out[-1] = torch.tensordot(torch.eye(mpsA[-1].size()[2],mpsB[-1].size()[2]),torch.ones([1]),dims=([],[])).permute(0,2,1).to(mpsA[0])
-#     for i in range(S-1,oc+1,-1):
-#         out[i-1] = mps_operator_mps_right_env(mpsA[i-2],mpo[i-2],mpsB[i-2],out[i])
-#     for i in range(1,oc+1):
-#         out[i] = mps_operator_mps_right_env(mpsA[i-1],mpo[i-1],mpsB[i-1],out[i-1])
-#     return out
-
-# def three_terms_recursion(operator:qtt.netwoks.MPO,state_n:qtt.networks.MPS,state_nm1:qtt.networks.MPS,tol:float,crit:float):
-#    length_MPS = len(state_n[0]) 
-#    assert(len(state_n) == length_MPS)
-#    assert(len(operator) == length_MPS)
-#    out = qtt.networks.random_MPS
-#    envs = [qtt.networks.MPT() for i in range(2)]
-#    envs[0] = mps_operator_mps_left_env()
 
 def MPS_compression(MPS:qtn.MatrixProductState,target_norm2:float,tol:float,crit:float):
     return MPS_compressing_sum([MPS],target_norm2,tol,crit)
