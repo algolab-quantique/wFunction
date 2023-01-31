@@ -44,6 +44,9 @@ def lognorm(x,mu,sigma):
     return scplog.pdf(np.exp(-mu)*x,sigma )
 ```
 
+    OMP: Info #276: omp_set_nested routine deprecated, please use omp_set_max_active_levels instead.
+
+
 Une fois la fonction définie, on crée un registre quantique avec le nombre de qubits désiré, et on appelle *Generate_f_circuit*.
 Noté qu'on fixe les paramètres de la distribution en la plaçant dans un lambda.
 Les arguments sont: la distribution, la précision de la discrétisation intermédiaire de la fonction, la fidélité du circuit, le nombre de qubits, le domaine de la fonction, le registre quantique du circuit, le nombre maximal de couches du circuit et, finalement, le nom du circuit.
@@ -116,8 +119,8 @@ counts = result.get_counts(compiled_circuit)
 plot_histogram(counts)
 ```
 
-    error:  0.20961584702731595
-    error:  0.008334517925395577
+    error:  0.2096158470273157
+    error:  0.008334517925335632
 
 
 
@@ -141,8 +144,7 @@ Quelques usages possible:
 
 
 ```python
-
-from qiskit_ibm_runtime import QiskitRuntimeService,Session,Options
+# 
 from qiskit_aer.primitives import Sampler,Estimator
 from qiskit_aer import AerSimulator
 from qiskit.compiler import transpile
@@ -150,7 +152,12 @@ from qiskit.providers.aer.aerprovider import AerProvider
 from qiskit import QuantumCircuit,QuantumRegister,ClassicalRegister
 import matplotlib.pyplot as plt
 nqbits = 8
-circ = wf.qubitize_scalar(lambda x:lognorm(x,1,1),nqbits,[0,7],256,1e-3,cpt_rotations_matrices=wf.scalarQubitization.get_rotations_matrices)
+
+```
+
+
+```python
+circ = wf.qubitize_scalar(lambda x:lognorm(x,1,1),nqbits,[0,7],256,5e-3)#,cpt_rotations_matrices=wf.scalarQubitization.get_rotation_matrices)
 C0 = QuantumCircuit(nqbits)
 for i in range(nqbits-1):
     C0.h(i)
@@ -171,6 +178,16 @@ x = np.linspace(*domain,2**(nqbits-1))
 
 ```
 
+    0.15421894473981027
+
+
+    /opt/homebrew/lib/python3.10/site-packages/scipy/optimize/_differentiable_functions.py:107: ComplexWarning: Casting complex values to real discards the imaginary part
+      self.x = np.atleast_1d(x0).astype(float)
+
+
+    0.009923645940909073
+
+
 
 ```python
 plt.plot(lognorm(x,1,1),label="exact")
@@ -185,19 +202,22 @@ plt.show()
 
 
     
-![png](README_files/README_11_0.png)
+![png](README_files/README_12_0.png)
     
 
 
+Construire de tel opérateur est plus exigent que simplement préparé un état.
+Il en résulte typiquement des circuit plus profond que dans le premier cas.
+
 
 ```python
-circ.depth()
+circ.decompose(reps=10).depth()
 ```
 
 
 
 
-    129
+    1219
 
 
 

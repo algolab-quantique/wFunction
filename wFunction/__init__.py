@@ -6,8 +6,7 @@ __version__ = "0.2.0"
 
 
 from .Generate_circuit import (
-    Generate_f_circuit,
-    Generate_f_gate,
-    )
-from .scalarQubitization import qubitize as qubitize_scalar
-
+	Generate_f_circuit,
+	Generate_f_gate,
+)
+from .scalarQubitization import qubitize_scalar as qubitize_scalar

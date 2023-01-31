@@ -20,7 +20,7 @@ dependencies = [
 [project.optional-dependencies]
 test = [
     "matplotlib",
-    "seborn",
+    "seaborn",
     "scipy",
 ]
 doc = ["sphinx"]

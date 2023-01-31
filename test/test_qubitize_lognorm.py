@@ -5,7 +5,7 @@ from wFunction import scalarQubitization as sQ
 from wFunction.scalarQubitization import *
 from matplotlib import pyplot as plt
 max_layers=1024
-precision=1e-3
+precision=5e-3
 #on the test functions, we only need 10 layers
 n_layer=10
 
@@ -25,7 +25,7 @@ plt.plot(np.imag(LNt))
 #%%
 
 #%%
-U,doubled = get_rotations_matrices(lognorm,domain,max_layers,precision)
+U,doubled = get_unitary_transform(lognorm,domain,max_layers,precision)
 rotsln = [*get_rotations(lognorm,domain,max_layers,precision)]
 philn = [*get_angles(lognorm,domain,max_layers,precision)]
 
@@ -47,6 +47,7 @@ plt.plot(flnt[:,0,0],label='flnt')
 plt.plot(plnt[:,1,1],label='plnt')
 plt.plot(psuf[:,0,0],label = 'psuf')
 plt.legend()
+plt.savefig("lntest.pdf")
 # plt.plot(np.real(flnt[:,0,1]))
 # plt.plot(np.imag(flnt[:,0,1]))
 #%%
@@ -77,7 +78,7 @@ plt.plot(np.real(LNt[-30:]))
 
 #%%Le circuit produit la bonne réponse à une superposition uniforme.
 nqbits=10
-circ = qubitize(lognorm,nqbits,[0,7],256,1e-3,cpt_rotations_matrices=sQ.get_rotations_matrices)
+circ = qubitize_scalar(lognorm,nqbits,[0,7],256,1e-3,cpt_rotations_matrices=sQ.get_unitary_transform)
 # circ.draw('mpl')
 
 from qiskit.quantum_info import SparsePauliOp
@@ -155,4 +156,13 @@ plt.show()
 # plt.title("Probabilités de mesure, qubits 0 à 3 initialisé en superposition uniforme")
 # plt.savefig("dist.pdf")
 
+# %%
+ophi = opt_qubitizetrealangles(lognorm,domain,1e-3,256)
+#%%
+opln = eval_SU2_func(ophi)
+oplnt = np.array([pln(tt) for tt in np.linspace(0,np.pi/2,300) ])
+
+
+plt.plot(t,lnt)
+plt.plot(t,oplnt[:,0,0])
 # %%
