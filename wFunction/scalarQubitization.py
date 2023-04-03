@@ -14,7 +14,7 @@ from numba import jit
 import numba
 from numba.typed import List as numbaList
 from numpy.typing import NDArray
-from matplotlib import pyplot as plt
+# from matplotlib import pyplot as plt
 
 # %%
 
@@ -39,6 +39,13 @@ def phi_SU2_func(t, phi):
 		out = out @ T @ exp(p)
 	return -1 * out
 
+
+def slow_phi_SU2_func(t, phi):
+	T = np.array([[np.exp(1j * t), 0], [0, np.exp(-1j * t)]])
+	out = exp(phi[0])
+	for p in phi[1:]:
+		out = out @ T @ exp(p)
+	return -1 * out
 
 @jit(nopython=True)
 def W(phi: NDArray, t: NDArray, g: NDArray, *args):
@@ -81,9 +88,20 @@ def opt_qubitizet(function, domain, precision, max_layers):
 	print(W(phi, t, g))
 	return phi, ga.pi_over_2_domain
 
+#%%
+def periodic_convolve(f,g):
+	"""do the convolution considering that f and g are half period of even periodic functions"""
+	f2 = np.concatenate([f[:-1],f[:0:-1]])
+	g2 = np.concatenate([g[:-1],g[:0:-1]])
+	F2 = np.fft.fft(f2,norm="forward")
+	G2 = np.fft.fft(g2,norm="forward")
+	C2 = G2*F2
+	c2 = np.fft.ifft(C2,norm="forward")
+	return c2[:len(c2)//2]
+#%%
 
-def opt_qubitizetrealangles(function, domain, precision, max_layers):
-	ga = get_angles(lambda x: 0.95 * function(x), domain, max_layers, precision)
+def opt_qubitizetrealangles(function, domain, precision, max_layers,Kernel=None):
+	ga = get_angles(lambda x: 0.95 * function(x), domain, max_layers, precision)#,Kernel = Kernel)
 	phi = [*ga]
 	n_layer = len(phi) - 1
 	if ga.pi_over_2_domain:
@@ -101,13 +119,17 @@ def opt_qubitizetrealangles(function, domain, precision, max_layers):
 		)  # we need atleast 2*n_layer to satisfy the underlying nyquist theorem
 		f = ZeroPiDomain(function, domain)
 		g = f(t)
+		if Kernel is not None:
+			k = ZeroPiDomain(Kernel,domain)(t)
+			assert(np.abs(np.mean(k)-1)<1e-14)
+			g = periodic_convolve(k,g)
 
 	def WW(phi, t, g, *args):
 		return W(numbaList(phi), t, g, *args)
 
-	print(WW(phi, t, g))
+	# print(WW(phi, t, g))
 	result = minimize(WW, phi, args=(t, g), method="L-BFGS-B")
-	print(WW(result.x, t, g))
+	# print(WW(result.x, t, g))
 	return result.x, ga.pi_over_2_domain
 
 
@@ -126,7 +148,7 @@ def phaseWalk(nqbits, pow=1, max_angle=pi) -> QuantumCircuit:
 	x_qreg = QuantumRegister(nqbits, "x")
 	circ = QuantumCircuit(x_qreg)
 	for i in range(nqbits - 1):
-		circ.cp(pow * max_angle, nqbits - 1, nqbits - i - 2)
+		circ.crz(pow * max_angle, nqbits - i - 2, nqbits - 1)
 		max_angle *= 0.5
 	return circ
 
@@ -144,7 +166,7 @@ def truncate(G, precision):
 	Remove the high frequency components smaller than precision
 	"""
 	R = np.sum(G * np.conj(G))
-	n = 0
+	n = 1
 	O = np.array([G[0]])
 	r = np.sum(O * np.conj(O))
 	while np.abs((r - R)) > precision**2:
@@ -191,7 +213,7 @@ def cpt_complement(fastfourierseries):
 	m = len(roots)
 	roots = roots[np.abs(roots) <= 1.0]
 	n = len(roots)
-	assert np.abs(n / m - 0.5) < 1e-15  # doit être 1/2
+	assert np.abs(n / m - 0.5) < 1e-15  ," The root finding step is unstable, perhaps the absolute value of your function comes too close to 1 "
 	# La fonction complémentaire est $w^{-\floor{n/2}}\prod_r (w-r)$ ou r sont les racines après filtrage.
 	# À moins qu'il n'y ais que quelque racine, un calcule directe des coéfficient polynomial n'est pas possible numériquement.
 	# Il y a typiquement des annulations catastrophique dû à la précision finie.
@@ -228,17 +250,29 @@ def cpt_complement(fastfourierseries):
 	return F
 
 
-def cpt_Laurent_mats(function, domain, max_layers, precision):
+def cpt_Laurent_mats(function, domain, max_layers, precision,Kernel = None):
 	f = ZeroPiDomain(function, domain)
 	t = np.linspace(0, pi, max_layers // 2 + 1)
 	g = f(t)
 
+
 	g = np.concatenate(
 		[g[:-1], g[-1:0:-1]]
 	)  # last element must be chopped for correct parity to be correct
+
+
 	G = fft(
 		g, norm="forward"
 	)  # forward normalisation: we can truncate in Fourier's space without changing the normalisation.
+
+	if Kernel is not None:
+		k = ZeroPiDomain(Kernel,domain)(t)
+		k = np.concatenate(
+			[k[:-1], k[-1:0:-1]]
+		)  # last element must be chopped for correct parity to be correct
+		K = fft(k,norm="forward")
+		K /= K[0] #enforce normalisation
+		G = G*K #convolution in original domain
 	G = truncate(G, precision)
 
 	rG = np.array([*reversed(G)])
@@ -250,26 +284,27 @@ def cpt_Laurent_mats(function, domain, max_layers, precision):
 	n = len(rG) // 2
 	assert (
 		np.abs(np.linalg.det(C[:, :, n + 1])) < precision * 0.1
-	), "The algorithm cannot reach target precision {}".format(precision)
+	), "The algorithm cannot reach target precision {}. Try the variationnal method instead.".format(precision)
 	assert (
 		np.abs(np.linalg.det(C[:, :, -n])) < precision * 0.1
-	), "The algorithm cannot reach target precision {}".format(precision)
+	), "The algorithm cannot reach target precision {}. Try the variationnal method instead.".format(precision)
 	return G, COMP
 
 
 def Check_and_correct_ps(p: NDArray, s: NDArray) -> tuple[NDArray, NDArray, bool]:
 	"""
-	Check that p and s have the property that every other frequency coefficient is zero.
+	Check that p and s have the property that every odd frequency coefficient is zero.
 	If not, double their lenght by interspeccing zeros in the spectrum.
 	"""
 	lp = len(p)
 	n = lp // 2
+	odd_max_freq = (lp%4) == 3
 	assert lp > 0 and len(s) > 0 and len(s) == lp
 	if (
-		(np.abs(p[1:n:2]) < 5e-15).all()
-		and (np.abs(p[n + 2 :: 2]) < 5e-15).all()
-		and (np.abs(s[1:n:2]) < 5e-15).all()
-		and (np.abs(s[n + 2 :: 2]) < 5e-15).all()
+		(np.abs(p[1:n+1:2]) < 5e-15).all()
+		and (np.abs(p[n + 2 - odd_max_freq :: 2]) < 5e-15).all()
+		and (np.abs(s[1:n + 1:2]) < 5e-15).all()
+		and (np.abs(s[n + 2 - odd_max_freq :: 2]) < 5e-15).all()
 	):
 		return p, s, False
 	else:
@@ -373,7 +408,7 @@ class get_rotations:
 		return mat
 
 
-def get_rotation_matrices(function, domain, max_layers, precision=1e-4):
+def get_rotations_matrices(function, domain, max_layers, precision=1e-4):
 	"""
 	Direct method for the computation of the rotation matrices, with the output formatted for scalar_qubitize.
 	"""
@@ -408,7 +443,7 @@ class get_angles:
 
 def phi2rots_it(phis):
 	for p in phis:
-		yield expm(np.array([[0, (p)], [(-1 * np.conj(p)), 0]]))
+		yield exp(p)
 
 
 def phi2rots(phis):
@@ -462,6 +497,7 @@ def qubitize_scalar(
 	max_layers,
 	precision=1e-4,
 	cpt_rotations_matrices=var_get_rotation_matrices,
+	kernel = None
 ):
 	"""
 	pick a power of 2 for max_layer. something smaller than 2**nqbits. Actual number of layer of proposed solution is controlled by the precision.
@@ -482,13 +518,10 @@ def qubitize_scalar(
 	# 	for r in self.rots[1:]:
 	# 		out = out @ T @ np.conj(r.T)
 	# 	return out
-	ugate = UnitaryGate(rots[0])
+	ugate = UnitaryGate(-1*rots[0])
 	circ.append(ugate,[nqbits-1])
 	for u in rots[1:]:
 		circ.append(T, all_qubit)
 		ugate = UnitaryGate(u)
 		circ.append(ugate, [nqbits - 1])
 	return circ
-
-
-# %%

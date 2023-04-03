@@ -509,7 +509,7 @@ def MPS2gates2(
 		layer_mpo = layer_mpo.partial_transpose([*range(layer_mpo.L)]).H
 		# 3.
 		layer_mpo.site_tag_id = mps.site_tag_id
-		new_mps = MPS_compression((layer_mpo.H).apply(mps), 1, 1e-13, 1e-13)
+		new_mps = MPS_compression((layer_mpo.H).apply(mps), 1, 1e-14, 1e-13)
 		# 4.
 		err = np.sqrt(1 - np.abs((mps | layer.H | Zero_state).contract()))
 		print("error: ", err)

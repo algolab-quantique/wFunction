@@ -15,6 +15,7 @@ dependencies = [
     "qiskit",
     "multimethod",
     "numba",
+    "autoray",
 ]
 
 [project.optional-dependencies]
