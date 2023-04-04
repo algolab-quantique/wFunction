@@ -497,7 +497,8 @@ def qubitize_scalar(
 	max_layers,
 	precision=1e-4,
 	cpt_rotations_matrices=var_get_rotation_matrices,
-	kernel = None
+	kernel = None,
+	alternate_orders = True
 ):
 	"""
 	pick a power of 2 for max_layer. something smaller than 2**nqbits. Actual number of layer of proposed solution is controlled by the precision.
@@ -511,6 +512,7 @@ def qubitize_scalar(
 	if pi_over_2_domain:
 		max_angle /= 2
 	T = phaseWalk(nqbits, max_angle=max_angle)
+	T_r = T.reverse_ops() #the componant of T all commute, this is the same unitary
 	x_qreg = QuantumRegister(nqbits, "x")
 	circ = QuantumCircuit(x_qreg)
 	all_qubit = [*range(nqbits)]
@@ -522,6 +524,8 @@ def qubitize_scalar(
 	circ.append(ugate,[nqbits-1])
 	for u in rots[1:]:
 		circ.append(T, all_qubit)
+		if alternate_orders:
+			T,T_r = T_r,T #it should require fewr swaps to alternate between the two order with linear connectivity
 		ugate = UnitaryGate(u)
 		circ.append(ugate, [nqbits - 1])
 	return circ
