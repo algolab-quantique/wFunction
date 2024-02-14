@@ -1,3 +1,20 @@
+"""
+ Copyright (c) 2024 Alexandre Foley - Université de Sherbrooke
+
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with this program. If not, see <https://www.gnu.org/licenses/>.
+ """
+
 import numpy as np
 from scipy.special import binom
 import quimb.tensor as qtn
@@ -14,43 +31,43 @@ Sum and condense all those k MPS into a single one.
 
 
 def bits2range(bits: int, domain: tuple[float, float], nbits: int):
-	"""
-	Linear map from an int in [0,(2**nbits)-1] to [a,b]
-	"""
-	b = domain[1]
-	a = domain[0]
-	return (b - a) * bits / (2**nbits - 1) + a
+    """
+    Linear map from an int in [0,(2**nbits)-1] to [a,b]
+    """
+    b = domain[1]
+    a = domain[0]
+    return (b - a) * bits / (2**nbits - 1) + a
 
 
 def interpolate(f, degree: int, domain, fulldomain=None) -> Poly:
-	"""
-	return a polynomial object that interpolate f on the specified domain, with a low degree polynomial.
-	if the maximum degree doesn't give you good enough result, try using more numerous, smaller domains.
-	"""
-	if fulldomain is None:
-		fulldomain = domain
-	assert degree <= 10
-	poly = np.polynomial.chebyshev.Chebyshev.interpolate(f, degree, domain=domain)
-	return Poly(
-		np.polynomial.chebyshev.cheb2poly(poly.coef), poly.domain, poly.window
-	).convert(domain=domain, window=fulldomain)
+    """
+    return a polynomial object that interpolate f on the specified domain, with a low degree polynomial.
+    if the maximum degree doesn't give you good enough result, try using more numerous, smaller domains.
+    """
+    if fulldomain is None:
+        fulldomain = domain
+    assert degree <= 10
+    poly = np.polynomial.chebyshev.Chebyshev.interpolate(f, degree, domain=domain)
+    return Poly(
+        np.polynomial.chebyshev.cheb2poly(poly.coef), poly.domain, poly.window
+    ).convert(domain=domain, window=fulldomain)
 
 
 def Phi_s(poly: Poly, s: int, x: float):
-	p = poly.degree()
-	return np.sum([poly.coef[k] * binom(k, s) * x ** (k - s) for k in range(s, p + 1)])
+    p = poly.degree()
+    return np.sum([poly.coef[k] * binom(k, s) * x ** (k - s) for k in range(s, p + 1)])
 
 
 def G(poly: Poly, polydomain_start: int, fulldomain, n: int, nqbits: int):
-	out = np.zeros([poly.degree() + 1, 2, poly.degree() + 1])
-	x0 = 0
-	x1 = bits2range(1 << n, fulldomain, nqbits) - fulldomain[0]
-	for i in range(poly.degree() + 1):
-		for j in range(0, i + 1):
-			bin = binom(i, i - j)
-			out[i, 0, j] = bin * x0 ** (i - j)
-			out[i, 1, j] = bin * x1 ** (i - j)
-	return out
+    out = np.zeros([poly.degree() + 1, 2, poly.degree() + 1])
+    x0 = 0
+    x1 = bits2range(1 << n, fulldomain, nqbits) - fulldomain[0]
+    for i in range(poly.degree() + 1):
+        for j in range(0, i + 1):
+            bin = binom(i, i - j)
+            out[i, 0, j] = bin * x0 ** (i - j)
+            out[i, 1, j] = bin * x1 ** (i - j)
+    return out
 
 
 # def G(poly:Poly,polydomain_start:int,fulldomain,n:int,nqbits:int):
@@ -66,58 +83,58 @@ def G(poly: Poly, polydomain_start: int, fulldomain, n: int, nqbits: int):
 
 
 def polynomial2MPS(
-	poly: Poly,
-	nqbits: int,
-	polydomain: tuple[int, int],
-	fulldomain: tuple[float, float],
+    poly: Poly,
+    nqbits: int,
+    polydomain: tuple[int, int],
+    fulldomain: tuple[float, float],
 ):
-	"""
-	takes the polynomial defined on the polydomain and turn it into a qbits MPS with nqbits that exist on the fulldomain.
-	polydomain must be given as two integers, those integer should convert to the support of the polynomial when given to bits2range with fulldomain for domain.
-	"""
-	# tensor at index 0 is most significant qbit.
-	pd0 = polydomain[0]
-	pd1 = polydomain[1]
-	Ntensor_support = int(np.ceil(np.log2((pd0 ^ pd1) + 1)))
-	out = [None for x in range(nqbits)]
-	trivial_bits = polydomain[0] >> (Ntensor_support)
-	for i in range(-Ntensor_support - 1, -len(out) - 1, -1):
-		out[i] = np.zeros([1, 2, 1])
-		bit = trivial_bits & 1
-		trivial_bits = trivial_bits >> 1
-		out[i][0, bit, 0] = 1
-	if Ntensor_support > 1:
-		out[-Ntensor_support] = np.zeros((1, 2, poly.degree() + 1))
-		for i in range(poly.degree() + 1):
-			T = out[-Ntensor_support]
-			x = 0
-			T[0, 0, i] = Phi_s(poly, i, x)
-			x = (
-				bits2range((1 << (Ntensor_support - 1)), fulldomain, nqbits)
-				- fulldomain[0]
-			)
-			T[0, 1, i] = Phi_s(poly, i, x)
-		for n in range(1, Ntensor_support - 1):
-			out[-n - 1] = G(poly, pd0, fulldomain, n, nqbits)
-		out[-1] = np.zeros((poly.degree() + 1, 2, 1))
-		out[-1][:, 1, 0] = np.array(
-			[
-				bits2range(pd0 + 1, fulldomain, nqbits) ** p
-				for p in range(poly.degree() + 1)
-			]
-		)
-		out[-1][:, 0, 0] = np.array(
-			[bits2range(pd0, fulldomain, nqbits) ** p for p in range(poly.degree() + 1)]
-		)
-	else:
-		out[-1] = np.zeros((1, 2, 1))
-		out[-1][0, 0, 0] = poly(bits2range(pd0, fulldomain, nqbits))
-		out[-1][0, 1, 0] = poly(bits2range(pd1, fulldomain, nqbits))
-	out = [x.transpose(0, 2, 1) for x in out]
-	out[0] = out[0][0, :, :]
-	out[-1] = out[-1][:, 0, :]
-	out = qtn.MatrixProductState(out, site_ind_id="lfq{}")
-	return out
+    """
+    takes the polynomial defined on the polydomain and turn it into a qbits MPS with nqbits that exist on the fulldomain.
+    polydomain must be given as two integers, those integer should convert to the support of the polynomial when given to bits2range with fulldomain for domain.
+    """
+    # tensor at index 0 is most significant qbit.
+    pd0 = polydomain[0]
+    pd1 = polydomain[1]
+    Ntensor_support = int(np.ceil(np.log2((pd0 ^ pd1) + 1)))
+    out = [None for x in range(nqbits)]
+    trivial_bits = polydomain[0] >> (Ntensor_support)
+    for i in range(-Ntensor_support - 1, -len(out) - 1, -1):
+        out[i] = np.zeros([1, 2, 1])
+        bit = trivial_bits & 1
+        trivial_bits = trivial_bits >> 1
+        out[i][0, bit, 0] = 1
+    if Ntensor_support > 1:
+        out[-Ntensor_support] = np.zeros((1, 2, poly.degree() + 1))
+        for i in range(poly.degree() + 1):
+            T = out[-Ntensor_support]
+            x = 0
+            T[0, 0, i] = Phi_s(poly, i, x)
+            x = (
+                bits2range((1 << (Ntensor_support - 1)), fulldomain, nqbits)
+                - fulldomain[0]
+            )
+            T[0, 1, i] = Phi_s(poly, i, x)
+        for n in range(1, Ntensor_support - 1):
+            out[-n - 1] = G(poly, pd0, fulldomain, n, nqbits)
+        out[-1] = np.zeros((poly.degree() + 1, 2, 1))
+        out[-1][:, 1, 0] = np.array(
+            [
+                bits2range(pd0 + 1, fulldomain, nqbits) ** p
+                for p in range(poly.degree() + 1)
+            ]
+        )
+        out[-1][:, 0, 0] = np.array(
+            [bits2range(pd0, fulldomain, nqbits) ** p for p in range(poly.degree() + 1)]
+        )
+    else:
+        out[-1] = np.zeros((1, 2, 1))
+        out[-1][0, 0, 0] = poly(bits2range(pd0, fulldomain, nqbits))
+        out[-1][0, 1, 0] = poly(bits2range(pd1, fulldomain, nqbits))
+    out = [x.transpose(0, 2, 1) for x in out]
+    out[0] = out[0][0, :, :]
+    out[-1] = out[-1][:, 0, :]
+    out = qtn.MatrixProductState(out, site_ind_id="lfq{}")
+    return out
 
 
 # def polynomial2MPS(poly:Poly, nqbits:int,polydomain:tuple[int,int], fulldomain:tuple[float,float],dtype = torch.float64):

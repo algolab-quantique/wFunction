@@ -1,18 +1,50 @@
+"""
+ Copyright (c) 2024 Alexandre Foley - Université de Sherbrooke
+
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with this program. If not, see <https://www.gnu.org/licenses/>.
+ """
+
 #%%
-from wFunction.scalarQubitization import *
+from wFunction.scalarQubitization import (
+    QuantumCircuit,
+    eval_SU2_func,
+    evalUmats_SU2_func,
+    exp,
+    get_angles,
+    get_rotations,
+    get_unitary_transform,
+    np,
+    numbaList,
+    phi2rots,
+    pi,
+    qubitize_scalar,
+    W,
+    ZeroPiDomain,
+)
 from matplotlib import pyplot as plt
 
 
 def gauss(x):
-	return np.exp(-(x**2))
+    return np.exp(-(x**2))
 
 
 def gauss99(x):
-	return np.exp(-(x**2)) * 0.99
+    return np.exp(-(x**2)) * 0.99
 
 
 def gauss95(x):
-	return np.exp(-(x**2)) * 0.95
+    return np.exp(-(x**2)) * 0.95
 
 
 #%%
@@ -23,7 +55,7 @@ precision = 1e-3
 # on the test functions, we only need 10 layers
 n_layer = 10
 ttheta = np.linspace(
-	0, pi, 10 * n_layer
+    0, pi, 10 * n_layer
 )  # for the test evaluation of the cost function
 gop = ZeroPiDomain(gauss, domain)
 g95op = ZeroPiDomain(gauss95, domain)
@@ -86,28 +118,26 @@ from qiskit.quantum_info import SparsePauliOp
 
 
 def z(n, N):
-	s = ""
-	for i in range(nqbits):
-		if i == n:
-			s += "Z"
-		else:
-			s += "I"
-	return s
+    s = ""
+    for i in range(nqbits):
+        if i == n:
+            s += "Z"
+        else:
+            s += "I"
+    return s
 
 
 Obs = [SparsePauliOp.from_list([(z(i, nqbits), 1)]) for i in range(nqbits)]
 
 sumop = Obs[0]
 for a in Obs[1:]:
-	sumop += a
+    sumop += a
 #%%
 # from qiskit.primitives import Sampler
-from qiskit_ibm_runtime import QiskitRuntimeService, Session, Options
 from qiskit_aer.primitives import Sampler, Estimator
 from qiskit_aer import AerSimulator
 from qiskit.compiler import transpile
-from qiskit.providers.aer.aerprovider import AerProvider
-from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
+from qiskit import QuantumCircuit
 
 # QRS = QiskitRuntimeService()
 #%%
@@ -118,7 +148,7 @@ from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
 #%%
 C0 = QuantumCircuit(nqbits)
 for i in range(nqbits - 1):
-	C0.h(i)
+    C0.h(i)
 
 C0.draw("mpl")
 #%%
@@ -147,7 +177,7 @@ print(result.quasi_dists)
 data = np.zeros(32)
 print(data)
 for key in result.quasi_dists[0]:
-	data[int(key)] = result.quasi_dists[0][key]
+    data[int(key)] = result.quasi_dists[0][key]
 plt.plot(data[:16], label="qubit 4 = 0")
 plt.plot(data[16:], label="qubit 4 = 1")
 # plt.legend()

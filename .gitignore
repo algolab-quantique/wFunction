@@ -5,3 +5,6 @@ dist/*
 *.DS_Store*
 Test_env/*
 *.pdf
+.pre-commit-config.yaml
+
+test/Stage\ Sam\ Paradis/

@@ -1,63 +1,85 @@
+"""
+ Copyright (c) 2024 Alexandre Foley - Université de Sherbrooke
+
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with this program. If not, see <https://www.gnu.org/licenses/>.
+ """
+
 
 #%%
 from importlib import reload
 from wFunction import mpo2qbitsgates as mqg
-from wFunction import MPO_compress
-from wFunction import mps2qbitsgates
-from wFunction.Chebyshev import controled_MPO,func2MPO,make_MPO,test_diagonnal
+from wFunction.Chebyshev import func2MPO
 from wFunction.generate_MPO import cMPO
-from wFunction.MPO_compress import MPO_compressing_sum,Square_Root,MPO_compressor
-from wFunction import Generate_g_circuit
+from wFunction.MPO_compress import Square_Root, MPO_compressor
 import numpy as np
-import qiskit as qs
-from qiskit.circuit import qpy_serialization
 import quimb.tensor as qtn
 
 from wFunction import generate_simple_MPO as gsm
 import matplotlib.pyplot as plt
 import seaborn as sb
 import numpy as np
-import jax.numpy as jnp
 from wFunction.mps2qbitsgates import staircaselayer
+
 Chebyshev = np.polynomial.Chebyshev
 sb.set_theme()
 # %%
 
 nqbit = 5
 precision = 0.000001
-osqrtpi = 1/np.sqrt(np.pi)
+osqrtpi = 1 / np.sqrt(np.pi)
+
+
 def one(x):
-    return x/1.1
+    return x / 1.1
+
+
 def f(x):
-    return np.exp(-(x)**2)*osqrtpi
+    return np.exp(-((x) ** 2)) * osqrtpi
+
+
 def g(x):
-    return np.sqrt(1-f(x)**2)
+    return np.sqrt(1 - f(x) ** 2)
+
 
 # print("----------")
 # MPO_f = make_MPO(f,nqbit,precision/2) <
 # print("----------")
-# MPO_g = make_MPO(g,nqbit,precision/2) 
+# MPO_g = make_MPO(g,nqbit,precision/2)
 # print("----------")
-MPO = func2MPO(one,nqbit,precision)
-ID = gsm.generate_id_MPO(MPO.upper_ind_id,MPO.lower_ind_id,MPO.L) 
+MPO = func2MPO(one, nqbit, precision)
+ID = gsm.generate_id_MPO(MPO.upper_ind_id, MPO.lower_ind_id, MPO.L)
 IDm2 = ID - MPO.apply(MPO)
-IDm2 = MPO_compressor(IDm2,1e-12,1e-13)
+IDm2 = MPO_compressor(IDm2, 1e-12, 1e-13)
 print("complement start")
-Complement_MPO = Square_Root(IDm2,1e-9,1e-5)
+Complement_MPO = Square_Root(IDm2, 1e-9, 1e-5)
 print("complement computed")
 # print("complement start")
 # Complement_MPO = Square_Root(IDm2,1e-9,1e-9,out=Complement_MPO)
 # print("complement computed")
-ctrlMPO = cMPO(Complement_MPO,MPO,1e-12)
+ctrlMPO = cMPO(Complement_MPO, MPO, 1e-12)
 #%%
-order = [*['b{}'.format(i) for i in range(nqbit)],*['k{}'.format(i) for i in range(nqbit)]]
+order = [
+    *["b{}".format(i) for i in range(nqbit)],
+    *["k{}".format(i) for i in range(nqbit)],
+]
 C = Complement_MPO.contract()
 # M = MPO.contract()
 C.transpose_(*order)
-c = C.data.reshape(2**nqbit,2**nqbit)
+c = C.data.reshape(2**nqbit, 2**nqbit)
 # M.transpose_(*order)
 # m = M.data.reshape(2**nqbit,2**nqbit)
-plt.plot(np.diag(c),label='Complement MPO')
+plt.plot(np.diag(c), label="Complement MPO")
 # # plt.plot(np.diag(c,1),label='zero')
 # # plt.plot(np.diag(m),label='f')
 # plt.plot(np.sqrt(1-np.diag(m)**2),label='c')
@@ -115,28 +137,47 @@ plt.plot(np.diag(c),label='Complement MPO')
 # # (layer0|accumulator).draw()
 # # circuit.draw("mpl")
 mqg = reload(mqg)
-circuit, mpoop = mqg.Iterative_MPOGatesA(ctrlMPO,1e-6,20,layer_gen=staircaselayer)
-proj = qtn.Tensor(data = [[1,0],[0,0]],inds = ('k{}'.format(nqbit),'b{}'.format(nqbit)))
-proj1 = qtn.Tensor(data = [[0,1],[0,0]],inds = ('k{}'.format(nqbit),'b{}'.format(nqbit)))
-cgates = (circuit|proj).contract()
-cgates1 = (circuit|proj1).contract()
-cgt = cgates.transpose(*[MPO.lower_ind_id.format(i) for i in range(nqbit)],*[MPO.upper_ind_id.format(i) for i in range(nqbit)])
-cgt1 = cgates1.transpose(*[MPO.lower_ind_id.format(i) for i in range(nqbit)],*[MPO.upper_ind_id.format(i) for i in range(nqbit)])
+circuit, mpoop = mqg.Iterative_MPOGatesA(ctrlMPO, 1e-6, 20, layer_gen=staircaselayer)
+proj = qtn.Tensor(
+    data=[[1, 0], [0, 0]], inds=("k{}".format(nqbit), "b{}".format(nqbit))
+)
+proj1 = qtn.Tensor(
+    data=[[0, 1], [0, 0]], inds=("k{}".format(nqbit), "b{}".format(nqbit))
+)
+cgates = (circuit | proj).contract()
+cgates1 = (circuit | proj1).contract()
+cgt = cgates.transpose(
+    *[MPO.lower_ind_id.format(i) for i in range(nqbit)],
+    *[MPO.upper_ind_id.format(i) for i in range(nqbit)]
+)
+cgt1 = cgates1.transpose(
+    *[MPO.lower_ind_id.format(i) for i in range(nqbit)],
+    *[MPO.upper_ind_id.format(i) for i in range(nqbit)]
+)
 cmt = MPO.contract().transpose_like(cgt)
-T = circuit.contract().transpose(*[MPO.lower_ind_id.format(i) for i in range(nqbit+1)],*[MPO.upper_ind_id.format(i) for i in range(nqbit+1)]).data.reshape(64,64)
-print("is unitary!?:", np.allclose(T@T.T,np.eye(64)))
+T = (
+    circuit.contract()
+    .transpose(
+        *[MPO.lower_ind_id.format(i) for i in range(nqbit + 1)],
+        *[MPO.upper_ind_id.format(i) for i in range(nqbit + 1)]
+    )
+    .data.reshape(64, 64)
+)
+print("is unitary!?:", np.allclose(T @ T.T, np.eye(64)))
 plt.semilogy(np.abs(cgt.data.flatten() - cmt.data.flatten()))
 plt.show()
-print(np.diagonal(cgt.data.reshape(2**(nqbit),2**(nqbit))))
-plt.plot(np.diagonal(cmt.data.reshape(2**(nqbit),2**(nqbit))))
-plt.plot(np.diagonal(cmt.data.reshape(2**(nqbit),2**(nqbit)),offset=1))
-plt.plot(np.diagonal(cgt.data.reshape(2**(nqbit),2**(nqbit)),offset=1),label = "gates")
-plt.plot(np.diagonal(cgt.data.reshape(2**(nqbit),2**(nqbit))),label="gates on d")
-plt.plot(np.diagonal(cgt1.data.reshape(2**(nqbit),2**(nqbit))),label = "complement")
+print(np.diagonal(cgt.data.reshape(2 ** (nqbit), 2 ** (nqbit))))
+plt.plot(np.diagonal(cmt.data.reshape(2 ** (nqbit), 2 ** (nqbit))))
+plt.plot(np.diagonal(cmt.data.reshape(2 ** (nqbit), 2 ** (nqbit)), offset=1))
+plt.plot(
+    np.diagonal(cgt.data.reshape(2 ** (nqbit), 2 ** (nqbit)), offset=1), label="gates"
+)
+plt.plot(np.diagonal(cgt.data.reshape(2 ** (nqbit), 2 ** (nqbit))), label="gates on d")
+plt.plot(np.diagonal(cgt1.data.reshape(2 ** (nqbit), 2 ** (nqbit))), label="complement")
 # print(cgt.data.reshape(2**nqbit,2**nqbit))
 plt.legend()
 plt.show()
- # %%
+#%%
 # uid = qtn.rand_uuid() + '{}'
 # layer_link_id = qtn.rand_uuid() + '{}'
 # intind = uid.format(0)+'{}'
@@ -175,10 +216,6 @@ plt.show()
 # for t in layer.tensors_sorted():
 #     print(t.tags)
 #     print(t.data.reshape(4,4))
-
-
-    
-
 
 
 # %%

@@ -11,20 +11,20 @@ Pour ce faire, une transformation linéaire est appliquée au domaine de la dist
 ### Quimb
 
 wFunction dépend de la bibliothèque de manipulation de tenseur Quimb.
-Malheureusement, il est possible que la version de quimb disponible sur pypa ne soit pas suffisamment à jour. Si c'est le cas, utilisez la commande suivante: 
-    
+Malheureusement, il est possible que la version de quimb disponible sur pypa ne soit pas suffisamment à jour. Si c'est le cas, utilisez la commande suivante:
+
     pip install git+https://github.com/jcmgray/quimb.git
 
-### Conda    
+### Conda
 
 L'installation avec conda n'est pas testée. Comme il s'agit d'un projet purement en python, il devrait fonctionner sans problème.
 
 ### Installation
 
 Télécharger le dépôt git, puis à partir du dossier du projet, saisissez la commande
-    
+
     pip install ./
-    
+
 
 
 ## Utilisation
@@ -54,7 +54,7 @@ Les arguments sont: la distribution, la précision de la discrétisation interm�
 
 ```python
 
-nqbit = 4
+nqbit = 7
 domain = [0,7]
 threeqb = qs.QuantumRegister(nqbit)
 circ = wf.Generate_f_circuit(lambda x:lognorm(x,1,1),MPS_precision=1e-14,Gate_precision=1e-2,nqbit=nqbit,domain=domain,register=threeqb,Nlayer=500,name="lognormal")
@@ -70,9 +70,9 @@ circ.draw('mpl')
 
 
 
-    
+
 ![png](README_files/README_4_0.png)
-    
+
 
 
 
@@ -87,7 +87,7 @@ from qiskit.visualization import plot_histogram
 circ.measure_all()
 simulator = QasmSimulator()
 compiled_circuit = transpile(circ, simulator)
-shots = 2000
+shots = 20000
 job = simulator.run(compiled_circuit, shots=shots)
 result = job.result()
 counts = result.get_counts(compiled_circuit)
@@ -97,9 +97,9 @@ plot_histogram(counts)
 
 
 
-    
+
 ![png](README_files/README_6_0.png)
-    
+
 
 
 
@@ -119,16 +119,16 @@ counts = result.get_counts(compiled_circuit)
 plot_histogram(counts)
 ```
 
-    error:  0.2096158470273157
-    error:  0.008334517925335632
+    error:  0.20961584702731886
+    error:  0.007075751333089413
 
 
 
 
 
-    
+
 ![png](README_files/README_8_1.png)
-    
+
 
 
 
@@ -140,11 +140,11 @@ pour une fonction $g(x)$ spécifié par l'utilisateur. Cet opérateur nécissite
 
 Quelques usages possible:
 - Étant donné un état $|\psi\rangle = \sum_x f(x)|x\rangle$, la moyenne pondéré $\sum_x |f(x)g(x)|^2$ peut être calculé en mesurant la probabilité de trouvé le qubit ancillaire dans l'état $|0\rangle$
-- Pour un opérateur classiquement diagonalisable $O$, la fonction $g(x)$ serait le spectre de valeur propres et l'opérateur qubitizé est $ Q = (T^\dagger \otimes I_{2\times 2})G(T\otimes I_{2\times 2})$ ou T est l'opérateur unitaire diagonalisant $O$. Il existe des algorithmes pour obtenir la qubitization d'une somme à partir de la qubitization des termes de la somme. 
+- Pour un opérateur classiquement diagonalisable $O$, la fonction $g(x)$ serait le spectre de valeur propres et l'opérateur qubitizé est $ Q = (T^\dagger \otimes I_{2\times 2})G(T\otimes I_{2\times 2})$ ou T est l'opérateur unitaire diagonalisant $O$. Il existe des algorithmes pour obtenir la qubitization d'une somme à partir de la qubitization des termes de la somme.
 
 
 ```python
-# 
+#
 from qiskit_aer.primitives import Sampler,Estimator
 from qiskit_aer import AerSimulator
 from qiskit.compiler import transpile
@@ -157,7 +157,7 @@ nqbits = 8
 
 
 ```python
-circ = wf.qubitize_scalar(lambda x:lognorm(x,1,1),nqbits,[0,7],256,5e-3)#,cpt_rotations_matrices=wf.scalarQubitization.get_rotation_matrices)
+circ = wf.qubitize_scalar(lambda x:lognorm(x,1,1),nqbits,[0,7],256,5e-3,cpt_rotations_matrices=wf.scalarQubitization.get_rotation_matrices)
 C0 = QuantumCircuit(nqbits)
 for i in range(nqbits-1):
     C0.h(i)
@@ -178,16 +178,6 @@ x = np.linspace(*domain,2**(nqbits-1))
 
 ```
 
-    0.15421894473981027
-
-
-    /opt/homebrew/lib/python3.10/site-packages/scipy/optimize/_differentiable_functions.py:107: ComplexWarning: Casting complex values to real discards the imaginary part
-      self.x = np.atleast_1d(x0).astype(float)
-
-
-    0.009923645940909073
-
-
 
 ```python
 plt.plot(lognorm(x,1,1),label="exact")
@@ -201,9 +191,9 @@ plt.show()
 ```
 
 
-    
+
 ![png](README_files/README_12_0.png)
-    
+
 
 
 Construire de tel opérateur est plus exigent que simplement préparé un état.
