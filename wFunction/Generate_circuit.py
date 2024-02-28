@@ -18,7 +18,7 @@
 import quimb.tensor as qtn
 import qiskit as qs
 from qiskit.quantum_info.operators import Operator
-from qiskit.extensions.unitary import UnitaryGate
+from qiskit.circuit.library import UnitaryGate
 import numpy as np
 import re
 from collections import defaultdict
@@ -115,9 +115,7 @@ def reverse_net2circuit(
         for o in range(register.size - 1):
             Op = Layer[op_tag.format(o)]
             Matrix = np.array(Op.data).transpose([3, 2, 1, 0]).reshape(4, 4)
-            Qop = UnitaryGate(
-                Operator(Matrix), layer_tag.format(l) + "_" + op_tag.format(o)
-            )
+            Qop = UnitaryGate(Matrix, layer_tag.format(l) + "_" + op_tag.format(o))
             Circ.append(Qop, [o, o + 1])
     return Circ.reverse_bits()
 

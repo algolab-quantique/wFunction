@@ -3,7 +3,7 @@
 wFunc_test/*
 dist/*
 *.DS_Store*
-Test_env/*
+env/*
 *.pdf
 .pre-commit-config.yaml
 

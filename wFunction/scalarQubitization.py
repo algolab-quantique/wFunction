@@ -24,7 +24,7 @@ import numpy as np
 from scipy.signal import correlate
 from scipy.optimize import minimize
 import jax.numpy as jnp
-from qiskit.extensions import UnitaryGate
+from qiskit.circuit.library import UnitaryGate
 from numba import jit
 from numba.typed import List as numbaList
 from numpy.typing import NDArray

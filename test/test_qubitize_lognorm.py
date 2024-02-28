@@ -19,6 +19,7 @@
 #%%
 from scipy.stats import lognorm as ln_sp
 from wFunction import scalarQubitization as sQ
+import numpy as np
 from wFunction.scalarQubitization import (
     eval_SU2_func,
     evalUmats_SU2_func,
@@ -28,6 +29,7 @@ from wFunction.scalarQubitization import (
     opt_qubitizetrealangles,
     phi_SU2_func,
     qubitize_scalar,
+    W,
 )
 from matplotlib import pyplot as plt
 
