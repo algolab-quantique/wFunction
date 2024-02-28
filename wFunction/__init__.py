@@ -8,7 +8,8 @@ try:
     from jax import config
 
     config.update("jax_enable_x64", True)
-    use_jax = True
+    use_jax = True  # The wFunction's source of truth on jax availability.
+    # Never import or use Jax without first checking use_jax.
 except:
     use_jax = False
 

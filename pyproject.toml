@@ -16,12 +16,18 @@ dependencies = [
     "numba",
     "autoray",
     "multimethod",
+    "networkx",
 ]
 
 [project.optional-dependencies]
 jax = [
     "jax",
     "jaxlib",
+]
+visualization = [
+    "matplotlib",
+    "seaborn",
+    "networkx",
 ]
 test = [
     "matplotlib",
