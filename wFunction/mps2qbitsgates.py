@@ -430,21 +430,21 @@ def magic_loss2(tn, psi, trivial_state, L, id, C, m):
 
 
 def trivial_state(nqbit: int, label="l0q{}", bin=0):
-    return qtn.TensorNetwork(
-        [
-            qtn.Tensor(
-                data=jnp.array(
-                    [
-                        1 * ((1 << (nqbit - 1 - i)) & bin == 0),
-                        1 * ((1 << (nqbit - 1 - i)) & bin != 0),
-                    ]
-                ),
-                tags="TS",
-                inds=[label.format(i)],
-            )
-            for i in range(nqbit)
-        ]
-    )
+	return qtn.TensorNetwork(
+		[
+			qtn.Tensor(
+				data=jnp.array(
+					[
+						1.0 * ((1 << (nqbit - 1 - i)) & bin == 0),
+						1.0 * ((1 << (nqbit - 1 - i)) & bin != 0),
+					]
+				),
+				tags="TS",
+				inds=[label.format(i)],
+			)
+			for i in range(nqbit)
+		]
+	)
 
 
 def randomize_net(net):
