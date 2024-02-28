@@ -23,7 +23,12 @@ from numpy import pi
 import numpy as np
 from scipy.signal import correlate
 from scipy.optimize import minimize
-import jax.numpy as jnp
+from . import use_jax
+
+if use_jax:
+    import jax.numpy as jnp
+else:
+    jnp = np
 from qiskit.circuit.library import UnitaryGate
 from numba import jit
 from numba.typed import List as numbaList

@@ -15,17 +15,18 @@
  along with this program. If not, see <https://www.gnu.org/licenses/>.
  """
 
-from jax.config import config
-
-config.update("jax_enable_x64", True)
-
 
 from typing import Union
 import quimb.tensor as qtn
 
 # import quantit as qtt
 import numpy as np
-import jax.numpy as jnp
+from . import use_jax
+
+if use_jax:
+    import jax.numpy as jnp
+else:
+    jnp = np
 from quimb.tensor.optimize import TNOptimizer
 from .compress_algs import layer_SVD_optimizer, MPS_compression
 import re

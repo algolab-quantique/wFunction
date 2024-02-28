@@ -20,8 +20,13 @@ from typing import Union
 
 from . import interpolate as terp
 from .MPO_compress import MPO_compressing_sum
-import jax.numpy as jnp
+from . import use_jax
 import numpy as np
+
+if use_jax:
+    import jax.numpy as jnp
+else:
+    jnp = np
 import quimb.tensor as qtn
 from numpy.polynomial.chebyshev import Chebyshev
 from multimethod import multimethod, overload

@@ -28,9 +28,6 @@ from . import compress_algs as calgs
 from .mps2qbitsgates import MPS2gates2
 from qiskit.converters import circuit_to_gate
 import typing
-from jax.config import config
-
-config.update("jax_enable_x64", True)
 
 TN = qtn.TensorNetwork
 

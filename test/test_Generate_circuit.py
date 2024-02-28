@@ -129,7 +129,9 @@ for i in range(2**nqbit):
 plt.plot(fx / fx[19] * test[19])
 plt.plot(test)
 plt.show()
-plt.semilogy(np.abs(fx / fx[19] * test[19] - test))
+plt.semilogy(np.abs(fx / fx[19] * test[19] - np.array(test)))
 
 #%%
 Circ = reverse_net2circuit(net, "L{}", "Op{}", register, "gaussian")
+
+# %%

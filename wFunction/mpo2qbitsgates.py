@@ -15,16 +15,19 @@
  along with this program. If not, see <https://www.gnu.org/licenses/>.
  """
 
-from jax.config import config
+import numpy as np
 
-config.update("jax_enable_x64", True)
 
 from typing import Union
 import quimb.tensor as qtn
 
 # import quantit as qtt
-import numpy as np
-import jax.numpy as jnp
+from . import use_jax
+
+if use_jax:
+    import jax.numpy as jnp
+else:
+    jnp = np
 from quimb.tensor.optimize import TNOptimizer
 from .mps2qbitsgates import (
     generate_staircase_operators,
@@ -670,7 +673,7 @@ def MPSO2Gates(
             "id": id,
             "L": L,
         },  # this is a constant TN to supply to loss_fn: psi,trivial_state, id, C,m)
-        autodiff_backend="jax",  # {'jax', 'tensorflow', 'autograd','torch'}
+        # autodiff_backend="jax",  # {'jax', 'tensorflow', 'autograd','torch'}
         optimizer="L-BFGS-B",
         loss_target=precision,
     )
