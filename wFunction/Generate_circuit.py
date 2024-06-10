@@ -173,8 +173,18 @@ def poly_by_part(
         return [(poly, qbdomain)]
 
 
+def remove_nul_polys(polys, precision):
+    kept = []
+    for poly in polys:
+        Polynomial_coefs = poly[0].coef
+        if np.any(np.abs(Polynomial_coefs) > precision):
+            kept.append(poly)
+    return kept
+
+
 def Generate_MPS(f, MPS_precision, nqbit, domain):
     polys = poly_by_part(f, MPS_precision, nqbit, domain)
+    polys = remove_nul_polys(polys, MPS_precision)
     mpses = [
         terp.polynomial2MPS(poly, nqbit, pdomain, domain) for poly, pdomain in polys
     ]
